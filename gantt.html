@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>チームスケジュール ガントチャート</title>
+<link rel="icon" href="data:,">
+
+<style>
+  :root{
+    --bg:#f4f5f7; --panel:#ffffff; --line:#e2e5ea; --line-strong:#c8cdd6;
+    --text:#1f2430; --muted:#6b7280; --accent:#4F6AF0; --danger:#e0453e;
+    --row-h:34px; --lane-h:26px; --name-w:150px; --head-h:46px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:"Segoe UI","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+    font-size:14px; display:flex; flex-direction:column; overflow:hidden;
+  }
+  button{font:inherit; cursor:pointer;}
+  .btn{
+    background:var(--panel); border:1px solid var(--line-strong); color:var(--text);
+    border-radius:6px; padding:6px 12px; line-height:1.2;
+  }
+  .btn:hover{background:#eef1f6;}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .btn.primary:hover{background:#3f57d8;}
+  .btn.danger{background:#fff; border-color:var(--danger); color:var(--danger);}
+  .btn.danger:hover{background:#fdeceb;}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+
+  /* ---------- toolbar ---------- */
+  header{
+    background:var(--panel); border-bottom:1px solid var(--line);
+    padding:8px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  header h1{font-size:16px; margin:0 8px 0 0; white-space:nowrap;}
+  .seg{display:flex; border:1px solid var(--line-strong); border-radius:6px; overflow:hidden;}
+  .seg button{border:0; background:var(--panel); padding:6px 14px;}
+  .seg button+button{border-left:1px solid var(--line-strong);}
+  .seg button.on{background:var(--accent); color:#fff;}
+  .range-label{font-weight:600; min-width:190px; text-align:center;}
+  .spacer{flex:1;}
+  .sync{
+    display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);
+    border-left:1px solid var(--line); padding-left:12px;
+  }
+  .dot{width:9px; height:9px; border-radius:50%; background:#b7bcc6; flex:none;}
+  .dot.ok{background:#2fa84f;} .dot.dirty{background:#e8a33d;} .dot.err{background:var(--danger);}
+  #syncText{max-width:270px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+  /* ---------- chart ---------- */
+  #scroller{flex:1; overflow:auto; background:var(--panel); position:relative;}
+  #board{position:relative; min-width:100%;}
+
+  .head{
+    position:sticky; top:0; z-index:30; display:flex; height:var(--head-h);
+    background:var(--panel); border-bottom:1px solid var(--line-strong);
+  }
+  .head .corner{
+    position:sticky; left:0; z-index:31; width:var(--name-w); flex:none;
+    background:var(--panel); border-right:1px solid var(--line-strong);
+    display:flex; align-items:center; padding:0 10px; font-weight:600; font-size:12px; color:var(--muted);
+  }
+  .head .ticks{position:relative; flex:1;}
+  .tick{
+    position:absolute; top:0; bottom:0; border-left:1px solid var(--line);
+    padding:4px 0 0 6px; font-size:11px; color:var(--muted); overflow:hidden; white-space:nowrap;
+  }
+  .tick.major{border-left-color:var(--line-strong); color:var(--text); font-weight:600;}
+  .tick.holiday{background:#fdf1f1;}
+  .tick.saturday{background:#f1f5fd;}
+
+  .row{display:flex; border-bottom:1px solid var(--line); min-height:var(--row-h);}
+  .row:hover .name{background:#f7f9fc;}
+  .name{
+    position:sticky; left:0; z-index:20; width:var(--name-w); flex:none;
+    background:var(--panel); border-right:1px solid var(--line-strong);
+    display:flex; align-items:center; gap:6px; padding:4px 10px; font-weight:600;
+  }
+  .name .count{font-weight:400; font-size:11px; color:var(--muted);}
+  .lanes{position:relative; flex:1; cursor:crosshair;}
+  .gridline{position:absolute; top:0; bottom:0; border-left:1px solid var(--line); pointer-events:none;}
+  .gridline.major{border-left-color:var(--line-strong);}
+  .gridline.holiday, .gridline.saturday{border-left:0; pointer-events:none;}
+  .shade{position:absolute; top:0; bottom:0; pointer-events:none;}
+  .shade.holiday{background:#fdf1f1;} .shade.saturday{background:#f2f6fd;}
+
+  .bar{
+    position:absolute; height:var(--lane-h); border-radius:5px; padding:0 8px;
+    display:flex; align-items:center; gap:6px; overflow:hidden; white-space:nowrap;
+    color:#fff; font-size:12px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.18);
+    min-width:6px;
+  }
+  .bar:hover{filter:brightness(1.08);}
+  .bar .t{font-weight:600; overflow:hidden; text-overflow:ellipsis; min-width:0;}
+  .bar .h{opacity:.85; font-size:11px; flex:none;}   /* 幅が足りるバーにだけ付ける */
+  .bar.clipL{border-top-left-radius:0; border-bottom-left-radius:0;}
+  .bar.clipR{border-top-right-radius:0; border-bottom-right-radius:0;}
+
+  #nowline{position:absolute; top:0; bottom:0; width:2px; background:var(--danger); z-index:25; pointer-events:none;}
+  #nowline::before{
+    content:""; position:absolute; top:0; left:-4px; width:10px; height:10px;
+    border-radius:50%; background:var(--danger);
+  }
+  .empty{padding:40px; text-align:center; color:var(--muted);}
+
+  /* ---------- modal ---------- */
+  .mask{
+    position:fixed; inset:0; background:rgba(20,24,33,.45); display:flex;
+    align-items:center; justify-content:center; z-index:100; padding:20px;
+  }
+  .mask[hidden]{display:none;}
+  .modal{
+    background:var(--panel); border-radius:12px; width:100%; max-width:460px;
+    box-shadow:0 18px 48px rgba(0,0,0,.28); max-height:90vh; display:flex; flex-direction:column;
+  }
+  .modal.wide{max-width:620px;}
+  .modal h2{margin:0; padding:16px 20px; font-size:16px; border-bottom:1px solid var(--line);}
+  .modal .body{padding:16px 20px; overflow:auto;}
+  .modal .foot{
+    padding:12px 20px; border-top:1px solid var(--line); display:flex; gap:8px; align-items:center;
+  }
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:12px; color:var(--muted); margin-bottom:4px;}
+  .field input, .field select, .field textarea{
+    width:100%; padding:7px 9px; border:1px solid var(--line-strong); border-radius:6px;
+    font:inherit; background:#fff; color:var(--text);
+  }
+  .field textarea{resize:vertical; min-height:60px;}
+  .two{display:flex; gap:10px;} .two>*{flex:1;}
+  .swatches{display:flex; gap:8px; flex-wrap:wrap;}
+  .swatch{width:28px; height:28px; border-radius:6px; border:2px solid transparent; cursor:pointer;}
+  .swatch.on{border-color:var(--text);}
+  .err{color:var(--danger); font-size:12px; margin-bottom:8px; min-height:16px;}
+
+  .mlist{list-style:none; margin:0; padding:0;}
+  .mlist li{display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line);}
+  .mlist input{flex:1; padding:6px 8px; border:1px solid var(--line-strong); border-radius:6px; font:inherit;}
+  .mlist .ord{display:flex; gap:2px;}
+  .mlist .ord button, .mlist .del{
+    border:1px solid var(--line-strong); background:#fff; border-radius:5px; padding:4px 8px; line-height:1;
+  }
+  .mlist .del{color:var(--danger); border-color:#f0c3c1;}
+  .note{font-size:12px; color:var(--muted); line-height:1.7;}
+  .note code{background:#eef0f4; padding:1px 5px; border-radius:4px;}
+  kbd{background:#eef0f4; border:1px solid var(--line-strong); border-bottom-width:2px;
+      border-radius:4px; padding:1px 5px; font-size:11px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🗓 チームスケジュール</h1>
+
+  <div class="seg" id="viewSeg">
+    <button data-view="day">日</button>
+    <button data-view="week">週</button>
+    <button data-view="month">月</button>
+  </div>
+
+  <button class="btn" id="prevBtn" title="前へ">◀</button>
+  <button class="btn" id="todayBtn">今日</button>
+  <button class="btn" id="nextBtn" title="次へ">▶</button>
+  <span class="range-label" id="rangeLabel"></span>
+
+  <button class="btn primary" id="addBtn">＋ 新規作業</button>
+  <button class="btn" id="memberBtn">メンバー</button>
+
+  <span class="spacer"></span>
+
+  <div class="sync">
+    <span class="dot" id="syncDot"></span>
+    <span id="syncText">未接続（この端末に保存中）</span>
+    <button class="btn" id="openBtn">共有ファイルを開く</button>
+    <button class="btn" id="saveBtn">保存</button>
+    <button class="btn" id="helpBtn" title="使い方">?</button>
+  </div>
+</header>
+
+<div id="scroller">
+  <div id="board"></div>
+</div>
+
+<!-- ===== task modal ===== -->
+<div class="mask" id="taskMask" hidden>
+  <div class="modal">
+    <h2 id="taskTitle">作業の追加</h2>
+    <div class="body">
+      <div class="err" id="taskErr"></div>
+      <div class="field">
+        <label>担当者</label>
+        <select id="fMember"></select>
+      </div>
+      <div class="field">
+        <label>作業内容</label>
+        <input id="fTitle" placeholder="例: A社 現場作業" maxlength="120">
+      </div>
+      <div class="two">
+        <div class="field">
+          <label>開始</label>
+          <input id="fStart" type="datetime-local">
+        </div>
+        <div class="field">
+          <label>終了</label>
+          <input id="fEnd" type="datetime-local">
+        </div>
+      </div>
+      <div class="field">
+        <label>色</label>
+        <div class="swatches" id="fColors"></div>
+      </div>
+      <div class="field">
+        <label>メモ（任意）</label>
+        <textarea id="fNote" maxlength="500"></textarea>
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn danger" id="taskDelete">削除</button>
+      <span class="spacer"></span>
+      <button class="btn" id="taskCancel">キャンセル</button>
+      <button class="btn primary" id="taskSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== member modal ===== -->
+<div class="mask" id="memberMask" hidden>
+  <div class="modal">
+    <h2>メンバー管理</h2>
+    <div class="body">
+      <ul class="mlist" id="memberList"></ul>
+      <div class="two" style="margin-top:12px;">
+        <input id="newMember" placeholder="新しいメンバー名" style="padding:7px 9px;border:1px solid var(--line-strong);border-radius:6px;font:inherit;">
+        <button class="btn" id="addMember" style="flex:none;">追加</button>
+      </div>
+      <p class="note" style="margin-top:14px;">
+        メンバーを削除しても、その人の作業予定は残ります（「未割当」として表示されます）。
+      </p>
+    </div>
+    <div class="foot">
+      <span class="spacer"></span>
+      <button class="btn primary" id="memberClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== help modal ===== -->
+<div class="mask" id="helpMask" hidden>
+  <div class="modal wide">
+    <h2>使い方・共有について</h2>
+    <div class="body note" id="helpBody"></div>
+    <div class="foot">
+      <button class="btn" id="exportBtn">JSONを書き出す</button>
+      <button class="btn" id="importBtn">JSONを読み込む</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+      <span class="spacer"></span>
+      <button class="btn primary" id="helpClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   定数
+   ========================================================================= */
+const COLORS = ["#4F6AF0","#2fa84f","#e8a33d","#e0453e","#8b5cf6","#0ea5e9","#ec4899","#64748b"];
+const LS_KEY = "teamGantt.data.v1";
+const LS_UI  = "teamGantt.ui.v1";
+const DAY_MS = 86400000;
+const TOMBSTONE_KEEP_MS = 30 * DAY_MS;
+const POLL_MS = 5000;
+
+/* =========================================================================
+   日付ユーティリティ（すべてローカル時刻で扱う）
+   ========================================================================= */
+const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const addDays    = (d,n) => new Date(d.getFullYear(), d.getMonth(), d.getDate()+n);
+const addMonths  = (d,n) => new Date(d.getFullYear(), d.getMonth()+n, 1);
+const startOfWeek= d => addDays(startOfDay(d), -startOfDay(d).getDay());       // 日曜始まり
+const startOfMonth = d => new Date(d.getFullYear(), d.getMonth(), 1);
+
+const pad = n => String(n).padStart(2,"0");
+/** Date -> "YYYY-MM-DDTHH:mm"（datetime-local と保存形式の共通表現） */
+function toLocalStr(d){
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+/** "YYYY-MM-DDTHH:mm" -> Date（不正なら null） */
+function parseLocal(s){
+  if(typeof s !== "string") return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if(!m) return null;
+  const d = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]);
+  return isNaN(d) ? null : d;
+}
+const WD = ["日","月","火","水","木","金","土"];
+const fmtHM   = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const fmtMD   = d => `${d.getMonth()+1}/${d.getDate()}`;
+const fmtYMD  = d => `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;
+
+/* =========================================================================
+   状態
+   ========================================================================= */
+let state = { version:1, members:[], tasks:[] };
+let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())) };
+let dirty = false;              // ファイルに未保存の変更があるか
+let fileHandle = null;          // File System Access API のハンドル
+let lastFileModified = 0;       // 直近に読み込んだファイルの更新時刻
+let pollTimer = null;
+let editingId = null;           // 編集中タスクID（null = 新規）
+let draftColor = COLORS[0];
+let scrollPending = true;       // 次の描画で横スクロール位置を合わせるか
+
+const uid = () => "t" + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const $ = id => document.getElementById(id);
+
+/* =========================================================================
+   データ正規化 / マージ
+   ========================================================================= */
+function normalize(raw){
+  const out = { version:1, members:[], tasks:[] };
+  if(!raw || typeof raw !== "object") return out;
+
+  if(Array.isArray(raw.members)){
+    out.members = raw.members
+      .filter(m => m && typeof m.id === "string")
+      .map((m,i) => ({
+        id: m.id,
+        name: typeof m.name === "string" ? m.name : "名称未設定",
+        order: Number.isFinite(m.order) ? m.order : i,
+        deleted: !!m.deleted,
+        updatedAt: Number.isFinite(m.updatedAt) ? m.updatedAt : 0,
+      }));
+  }
+  if(Array.isArray(raw.tasks)){
+    out.tasks = raw.tasks
+      .filter(t => t && typeof t.id === "string")
+      .map(t => ({
+        id: t.id,
+        memberId: typeof t.memberId === "string" ? t.memberId : "",
+        title: typeof t.title === "string" ? t.title : "",
+        start: parseLocal(t.start) ? t.start : null,
+        end:   parseLocal(t.end)   ? t.end   : null,
+        color: COLORS.includes(t.color) ? t.color : COLORS[0],
+        note: typeof t.note === "string" ? t.note : "",
+        deleted: !!t.deleted,
+        updatedAt: Number.isFinite(t.updatedAt) ? t.updatedAt : 0,
+      }))
+      .filter(t => t.deleted || (t.start && t.end));
+  }
+  return out;
+}
+
+/** id 単位の last-write-wins マージ。削除は tombstone として伝播させる。 */
+function mergeLists(a, b){
+  const map = new Map();
+  for(const item of a) map.set(item.id, item);
+  for(const item of b){
+    const cur = map.get(item.id);
+    if(!cur || item.updatedAt >= cur.updatedAt) map.set(item.id, item);
+  }
+  return [...map.values()];
+}
+function mergeState(local, remote){
+  return {
+    version: 1,
+    members: mergeLists(local.members, remote.members),
+    tasks:   mergeLists(local.tasks,   remote.tasks),
+  };
+}
+/** 古い tombstone を掃除（ファイルの肥大化防止） */
+function purge(s){
+  const limit = Date.now() - TOMBSTONE_KEEP_MS;
+  s.members = s.members.filter(m => !m.deleted || m.updatedAt > limit);
+  s.tasks   = s.tasks.filter(t => !t.deleted || t.updatedAt > limit);
+  return s;
+}
+
+const liveMembers = () =>
+  state.members.filter(m => !m.deleted).sort((a,b) => a.order - b.order || a.name.localeCompare(b.name,"ja"));
+const liveTasks = () => state.tasks.filter(t => !t.deleted);
+
+/* =========================================================================
+   ローカル保存（常に効かせる安全網）
+   ========================================================================= */
+function saveLocal(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){ /* 容量超過等は黙って無視 */ }
+  try{ localStorage.setItem(LS_UI, JSON.stringify(ui)); }catch(e){}
+}
+function loadLocal(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw) state = normalize(JSON.parse(raw));
+  }catch(e){}
+  try{
+    const raw = localStorage.getItem(LS_UI);
+    if(raw){
+      const u = JSON.parse(raw);
+      if(["day","week","month"].includes(u.view)) ui.view = u.view;
+      if(parseLocal(u.anchor)) ui.anchor = u.anchor;
+    }
+  }catch(e){}
+}
+
+function seedIfEmpty(){
+  if(state.members.length) return;
+  const now = Date.now();
+  ["山田 太郎","佐藤 花子","鈴木 一郎"].forEach((name,i) => {
+    state.members.push({ id:uid(), name, order:i, deleted:false, updatedAt:now });
+  });
+}
+
+/* =========================================================================
+   表示レンジ（ビュー共通で [start, end) の ms 区間として扱う）
+   ========================================================================= */
+function currentRange(){
+  const anchor = parseLocal(ui.anchor) || new Date();
+  if(ui.view === "day"){
+    const s = startOfDay(anchor);
+    return { start:s, end:addDays(s,1) };
+  }
+  if(ui.view === "week"){
+    const s = startOfWeek(anchor);
+    return { start:s, end:addDays(s,7) };
+  }
+  const s = startOfMonth(anchor);
+  return { start:s, end:addMonths(s,1) };
+}
+
+/** 目盛り: 日=1時間 / 週=1日 / 月=1週 */
+function buildTicks(range){
+  const ticks = [];
+  if(ui.view === "day"){
+    for(let h=0; h<24; h++){
+      const s = new Date(range.start.getTime() + h*3600000);
+      ticks.push({ start:s, end:new Date(s.getTime()+3600000), label:`${h}:00`, major:h%6===0 });
+    }
+  }else if(ui.view === "week"){
+    for(let i=0; i<7; i++){
+      const s = addDays(range.start, i);
+      ticks.push({
+        start:s, end:addDays(s,1),
+        label:`${fmtMD(s)}（${WD[s.getDay()]}）`, major:true,
+        dow:s.getDay(),
+      });
+    }
+  }else{
+    let cur = range.start;
+    let n = 1;
+    while(cur < range.end){
+      const wEnd = addDays(startOfWeek(cur), 7);
+      const end = wEnd > range.end ? range.end : wEnd;
+      ticks.push({ start:cur, end, label:`第${n}週 (${fmtMD(cur)}〜)`, major:true });
+      cur = end; n++;
+    }
+  }
+  return ticks;
+}
+
+function rangeLabelText(range){
+  const s = range.start;
+  if(ui.view === "day")  return `${fmtYMD(s)}（${WD[s.getDay()]}）`;
+  if(ui.view === "week"){
+    const e = addDays(s,6);
+    return `${fmtYMD(s)} 〜 ${fmtMD(e)}（${WD[e.getDay()]}）`;
+  }
+  return `${s.getFullYear()}年 ${s.getMonth()+1}月`;
+}
+
+/* タイムラインの最小幅（横スクロールさせて見やすさを確保） */
+function timelineWidth(tickCount){
+  if(ui.view === "day")   return 24*72;
+  if(ui.view === "week")  return 7*220;
+  return Math.max(tickCount*180, 900);
+}
+
+/* =========================================================================
+   描画
+   ========================================================================= */
+function render(){
+  const range = currentRange();
+  const rs = range.start.getTime(), re = range.end.getTime();
+  const span = re - rs;
+  const ticks = buildTicks(range);
+  const pct = ms => ((ms - rs) / span) * 100;
+
+  $("rangeLabel").textContent = rangeLabelText(range);
+  [...$("viewSeg").children].forEach(b => b.classList.toggle("on", b.dataset.view === ui.view));
+
+  const board = $("board");
+  const tlWidth = timelineWidth(ticks.length);
+  board.innerHTML = "";
+  board.style.width = (tlWidth + 150) + "px";
+
+  /* --- ヘッダー --- */
+  const head = document.createElement("div");
+  head.className = "head";
+  const corner = document.createElement("div");
+  corner.className = "corner";
+  corner.textContent = "メンバー";
+  head.appendChild(corner);
+
+  const tickWrap = document.createElement("div");
+  tickWrap.className = "ticks";
+  ticks.forEach(t => {
+    const el = document.createElement("div");
+    el.className = "tick" + (t.major ? " major" : "")
+      + (t.dow === 0 ? " holiday" : t.dow === 6 ? " saturday" : "");
+    el.style.left = pct(t.start.getTime()) + "%";
+    el.style.width = (pct(t.end.getTime()) - pct(t.start.getTime())) + "%";
+    el.textContent = t.label;
+    tickWrap.appendChild(el);
+  });
+  head.appendChild(tickWrap);
+  board.appendChild(head);
+
+  /* --- 行（メンバーごと） --- */
+  const members = liveMembers();
+  const tasks = liveTasks().filter(t => {
+    const s = parseLocal(t.start), e = parseLocal(t.end);
+    return s && e && e.getTime() > rs && s.getTime() < re;   // レンジに重なるものだけ
+  });
+
+  const byMember = new Map();
+  for(const t of tasks){
+    const key = members.some(m => m.id === t.memberId) ? t.memberId : "__none__";
+    if(!byMember.has(key)) byMember.set(key, []);
+    byMember.get(key).push(t);
+  }
+
+  const rows = members.map(m => ({ id:m.id, name:m.name }));
+  if(byMember.has("__none__")) rows.push({ id:"__none__", name:"未割当" });
+
+  if(!rows.length){
+    const p = document.createElement("div");
+    p.className = "empty";
+    p.textContent = "メンバーが登録されていません。「メンバー」ボタンから追加してください。";
+    board.appendChild(p);
+    return;
+  }
+
+  for(const row of rows){
+    const list = (byMember.get(row.id) || []).slice()
+      .sort((a,b) => parseLocal(a.start) - parseLocal(b.start));
+
+    /* 重なるタスクを段（レーン）に振り分ける */
+    const laneEnds = [];
+    const placed = list.map(t => {
+      const s = parseLocal(t.start).getTime(), e = parseLocal(t.end).getTime();
+      let lane = laneEnds.findIndex(end => end <= s);
+      if(lane === -1){ lane = laneEnds.length; laneEnds.push(e); }
+      else laneEnds[lane] = e;
+      return { t, s, e, lane };
+    });
+    const laneCount = Math.max(1, laneEnds.length);
+
+    const rowEl = document.createElement("div");
+    rowEl.className = "row";
+    rowEl.style.height = (laneCount * 26 + 8) + "px";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "name";
+    nameEl.innerHTML = `<span>${esc(row.name)}</span><span class="count">${list.length}件</span>`;
+    rowEl.appendChild(nameEl);
+
+    const lanes = document.createElement("div");
+    lanes.className = "lanes";
+
+    /* 背景（土日の色分け＋区切り線） */
+    ticks.forEach(t => {
+      const left = pct(t.start.getTime());
+      if(t.dow === 0 || t.dow === 6){
+        const sh = document.createElement("div");
+        sh.className = "shade " + (t.dow === 0 ? "holiday" : "saturday");
+        sh.style.left = left + "%";
+        sh.style.width = (pct(t.end.getTime()) - left) + "%";
+        lanes.appendChild(sh);
+      }
+      const g = document.createElement("div");
+      g.className = "gridline" + (t.major ? " major" : "");
+      g.style.left = left + "%";
+      lanes.appendChild(g);
+    });
+
+    /* バー */
+    for(const p of placed){
+      const left = Math.max(0, pct(p.s));
+      const right = Math.min(100, pct(p.e));
+      const bar = document.createElement("div");
+      bar.className = "bar" + (p.s < rs ? " clipL" : "") + (p.e > re ? " clipR" : "");
+      bar.style.left = left + "%";
+      bar.style.width = Math.max(right - left, 0.4) + "%";
+      bar.style.top = (4 + p.lane * 26) + "px";
+      bar.style.background = p.t.color;
+      const sd = parseLocal(p.t.start), ed = parseLocal(p.t.end);
+      const timeTxt = ui.view === "day"
+        ? `${fmtHM(sd)}–${fmtHM(ed)}`
+        : `${fmtMD(sd)} ${fmtHM(sd)}–${fmtMD(ed)} ${fmtHM(ed)}`;
+      /* 細いバーでは時刻を省き、作業内容の表示を優先する（詳細は title 属性に入れる） */
+      const barPx = (right - left) / 100 * tlWidth;
+      const needPx = 60 + timeTxt.length * 7;
+      bar.innerHTML = `<span class="t">${esc(p.t.title || "(無題)")}</span>`
+        + (barPx >= needPx ? `<span class="h">${timeTxt}</span>` : "");
+      bar.title = `${p.t.title || "(無題)"}\n${fmtYMD(sd)} ${fmtHM(sd)} 〜 ${fmtYMD(ed)} ${fmtHM(ed)}`
+        + (p.t.note ? `\n\n${p.t.note}` : "");
+      bar.addEventListener("click", ev => { ev.stopPropagation(); openTask(p.t.id); });
+      lanes.appendChild(bar);
+    }
+
+    /* 空き部分クリックで、その時間帯に新規作成 */
+    if(row.id !== "__none__"){
+      lanes.addEventListener("click", ev => {
+        const rect = lanes.getBoundingClientRect();
+        const ratio = Math.min(Math.max((ev.clientX - rect.left) / rect.width, 0), 1);
+        openTask(null, row.id, new Date(rs + ratio * span));
+      });
+    }
+
+    rowEl.appendChild(lanes);
+    board.appendChild(rowEl);
+  }
+
+  /* 現在時刻ライン */
+  const now = Date.now();
+  if(now >= rs && now < re){
+    const line = document.createElement("div");
+    line.id = "nowline";
+    /* メンバー列(150px)の右から、タイムライン実寸に対する割合で配置する */
+    line.style.left = (150 + tlWidth * pct(now) / 100) + "px";
+    board.appendChild(line);
+  }
+
+  /* ビューや日付を切り替えた直後だけ、見たい時間帯までスクロールする
+     （1分ごとの再描画でユーザーのスクロール位置を奪わないようにする） */
+  if(scrollPending){
+    scrollPending = false;
+    const sc = $("scroller");
+    if(ui.view === "day"){
+      const focus = (now >= rs && now < re) ? now : rs + 7*3600000;   // 現在時刻、なければ 7:00
+      sc.scrollLeft = Math.max(0, tlWidth * pct(focus) / 100 - 120);
+    }else{
+      sc.scrollLeft = 0;
+    }
+  }
+}
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+
+/* =========================================================================
+   タスク編集
+   ========================================================================= */
+function snap(date){
+  const d = new Date(date);
+  if(ui.view === "day"){
+    d.setMinutes(d.getMinutes() < 30 ? 0 : 30, 0, 0);
+  }else{
+    d.setHours(9, 0, 0, 0);   // 週/月ビューでは既定 9:00 開始
+  }
+  return d;
+}
+
+function openTask(id, presetMember, presetStart){
+  editingId = id;
+  const sel = $("fMember");
+  sel.innerHTML = "";
+  for(const m of liveMembers()){
+    const o = document.createElement("option");
+    o.value = m.id; o.textContent = m.name;
+    sel.appendChild(o);
+  }
+  $("taskErr").textContent = "";
+
+  if(id){
+    const t = state.tasks.find(x => x.id === id);
+    if(!t) return;
+    $("taskTitle").textContent = "作業の編集";
+    sel.value = t.memberId;
+    $("fTitle").value = t.title;
+    $("fStart").value = t.start;
+    $("fEnd").value = t.end;
+    $("fNote").value = t.note;
+    draftColor = t.color;
+    $("taskDelete").hidden = false;
+  }else{
+    $("taskTitle").textContent = "作業の追加";
+    if(presetMember) sel.value = presetMember;
+    const s = snap(presetStart || new Date());
+    const e = new Date(s.getTime() + (ui.view === "day" ? 3600000 : 8*3600000));
+    $("fTitle").value = "";
+    $("fStart").value = toLocalStr(s);
+    $("fEnd").value = toLocalStr(e);
+    $("fNote").value = "";
+    draftColor = COLORS[0];
+    $("taskDelete").hidden = true;
+  }
+  renderSwatches();
+  $("taskMask").hidden = false;
+  $("fTitle").focus();
+}
+
+function renderSwatches(){
+  const wrap = $("fColors");
+  wrap.innerHTML = "";
+  COLORS.forEach(c => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "swatch" + (c === draftColor ? " on" : "");
+    b.style.background = c;
+    b.addEventListener("click", () => { draftColor = c; renderSwatches(); });
+    wrap.appendChild(b);
+  });
+}
+
+function saveTask(){
+  const memberId = $("fMember").value;
+  const title = $("fTitle").value.trim();
+  const startStr = $("fStart").value;
+  const endStr = $("fEnd").value;
+  const s = parseLocal(startStr), e = parseLocal(endStr);
+  const err = $("taskErr");
+
+  if(!memberId){ err.textContent = "担当者を選択してください。"; return; }
+  if(!title){ err.textContent = "作業内容を入力してください。"; return; }
+  if(!s || !e){ err.textContent = "開始・終了の日時を入力してください。"; return; }
+  if(e <= s){ err.textContent = "終了は開始より後の時刻にしてください。"; return; }
+
+  const now = Date.now();
+  if(editingId){
+    const t = state.tasks.find(x => x.id === editingId);
+    Object.assign(t, {
+      memberId, title,
+      start: toLocalStr(s), end: toLocalStr(e),
+      color: draftColor, note: $("fNote").value.trim(), updatedAt: now,
+    });
+  }else{
+    state.tasks.push({
+      id: uid(), memberId, title,
+      start: toLocalStr(s), end: toLocalStr(e),
+      color: draftColor, note: $("fNote").value.trim(),
+      deleted: false, updatedAt: now,
+    });
+  }
+  closeTask();
+  changed();
+}
+
+function deleteTask(){
+  if(!editingId) return;
+  const t = state.tasks.find(x => x.id === editingId);
+  if(!t) return;
+  if(!confirm(`「${t.title || "(無題)"}」を削除しますか？`)) return;
+  t.deleted = true;
+  t.updatedAt = Date.now();
+  closeTask();
+  changed();
+}
+const closeTask = () => { $("taskMask").hidden = true; editingId = null; };
+
+/* =========================================================================
+   メンバー管理
+   ========================================================================= */
+function renderMembers(){
+  const ul = $("memberList");
+  ul.innerHTML = "";
+  const list = liveMembers();
+  if(!list.length){
+    ul.innerHTML = `<li style="color:var(--muted);border:0;">メンバーがいません。下の欄から追加してください。</li>`;
+  }
+  list.forEach((m, i) => {
+    const li = document.createElement("li");
+
+    const input = document.createElement("input");
+    input.value = m.name;
+    input.addEventListener("change", () => {
+      const v = input.value.trim();
+      if(!v){ input.value = m.name; return; }
+      m.name = v; m.updatedAt = Date.now();
+      changed();
+    });
+
+    const ord = document.createElement("div");
+    ord.className = "ord";
+    const up = document.createElement("button"); up.textContent = "↑"; up.disabled = i === 0;
+    const dn = document.createElement("button"); dn.textContent = "↓"; dn.disabled = i === list.length-1;
+    up.addEventListener("click", () => swapOrder(list, i, i-1));
+    dn.addEventListener("click", () => swapOrder(list, i, i+1));
+    ord.append(up, dn);
+
+    const del = document.createElement("button");
+    del.className = "del"; del.textContent = "削除";
+    del.addEventListener("click", () => {
+      if(!confirm(`${m.name} を削除しますか？（作業予定は「未割当」として残ります）`)) return;
+      m.deleted = true; m.updatedAt = Date.now();
+      renderMembers(); changed();
+    });
+
+    li.append(input, ord, del);
+    ul.appendChild(li);
+  });
+}
+function swapOrder(list, i, j){
+  const now = Date.now();
+  const a = list[i], b = list[j];
+  const ao = a.order, bo = b.order;
+  a.order = bo; b.order = ao;
+  a.updatedAt = now; b.updatedAt = now;
+  /* order が重複していた場合に備えて振り直す */
+  list.slice().sort((x,y)=>x.order-y.order).forEach((m,k)=>{ m.order = k; });
+  renderMembers(); changed();
+}
+function addMemberFromInput(){
+  const el = $("newMember");
+  const name = el.value.trim();
+  if(!name) return;
+  const max = liveMembers().reduce((a,m) => Math.max(a, m.order), -1);
+  state.members.push({ id:uid(), name, order:max+1, deleted:false, updatedAt:Date.now() });
+  el.value = "";
+  renderMembers(); changed();
+}
+
+/* =========================================================================
+   共有ファイル同期（File System Access API）
+   ========================================================================= */
+const fsaSupported = typeof window.showOpenFilePicker === "function";
+
+function setSync(kind, text){
+  const dot = $("syncDot");
+  dot.className = "dot" + (kind ? " " + kind : "");
+  $("syncText").textContent = text;
+  $("syncText").title = text;
+}
+function refreshSyncLabel(){
+  if(!fileHandle){
+    setSync(dirty ? "dirty" : "", "未接続（この端末に保存中）");
+    return;
+  }
+  setSync(dirty ? "dirty" : "ok",
+    dirty ? `${fileHandle.name}：未保存の変更あり` : `${fileHandle.name}：保存済み`);
+}
+
+/** 変更が起きたときの共通処理 */
+function changed(){
+  dirty = true;
+  saveLocal();
+  render();
+  refreshSyncLabel();
+  scheduleAutoSave();
+}
+
+let autoSaveTimer = null;
+function scheduleAutoSave(){
+  if(!fileHandle) return;
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => { saveToFile(false); }, 1200);
+}
+
+async function pickFile(){
+  if(!fsaSupported){
+    alert(
+      "このブラウザ／開き方では共有ファイルへの直接保存が使えません。\n\n" +
+      "・Microsoft Edge または Google Chrome を使う\n" +
+      "・かつ http(s) 経由で開く（file:// で直接開くと使用不可）\n\n" +
+      "それまでは「?」ボタンの中の「JSONを書き出す／読み込む」でやり取りしてください。"
+    );
+    return;
+  }
+  try{
+    const [h] = await window.showOpenFilePicker({
+      types:[{ description:"スケジュールデータ", accept:{ "application/json":[".json"] } }],
+      multiple:false,
+    });
+    fileHandle = h;
+    await readFromFile(true);
+    await saveToFile(true);          // 手元の内容も反映させる
+    startPolling();
+  }catch(e){
+    if(e && e.name === "AbortError") return;
+    setSync("err", "ファイルを開けませんでした: " + (e && e.message ? e.message : e));
+  }
+}
+
+async function readFromFile(force){
+  if(!fileHandle) return false;
+  const file = await fileHandle.getFile();
+  if(!force && file.lastModified === lastFileModified) return false;
+  lastFileModified = file.lastModified;
+  const text = await file.text();
+  if(!text.trim()) return false;
+  let remote;
+  try{ remote = normalize(JSON.parse(text)); }
+  catch(e){ setSync("err", "共有ファイルの形式が不正です"); return false; }
+  state = purge(mergeState(state, remote));
+  saveLocal();
+  render();
+  return true;
+}
+
+async function saveToFile(silent){
+  if(!fileHandle){ saveLocal(); return; }
+  try{
+    await readFromFile(false);                       // 他の人の変更を取り込んでから書く
+    const w = await fileHandle.createWritable();
+    await w.write(JSON.stringify(purge(state), null, 2));
+    await w.close();
+    const f = await fileHandle.getFile();
+    lastFileModified = f.lastModified;
+    dirty = false;
+    saveLocal();
+    refreshSyncLabel();
+  }catch(e){
+    setSync("err", "保存に失敗しました: " + (e && e.message ? e.message : e));
+    if(!silent) alert("共有ファイルへの保存に失敗しました。\n" + (e && e.message ? e.message : e));
+  }
+}
+
+function startPolling(){
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    if(!fileHandle || document.hidden) return;
+    try{ await readFromFile(false); refreshSyncLabel(); }
+    catch(e){ /* 一時的な共有ドライブ切断などは無視して次回に任せる */ }
+  }, POLL_MS);
+}
+
+/* 手動の書き出し／読み込み（file:// で開いた場合のフォールバック） */
+function exportJson(){
+  const blob = new Blob([JSON.stringify(purge(state), null, 2)], { type:"application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "team-schedule.json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function importJson(file){
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const remote = normalize(JSON.parse(r.result));
+      state = purge(mergeState(state, remote));
+      saveLocal(); render(); refreshSyncLabel();
+      alert("読み込みました（既存のデータとマージしました）。");
+    }catch(e){
+      alert("読み込みに失敗しました。JSONの形式を確認してください。");
+    }
+  };
+  r.readAsText(file);
+}
+
+/* =========================================================================
+   ナビゲーション
+   ========================================================================= */
+function move(dir){
+  const a = parseLocal(ui.anchor) || new Date();
+  let next;
+  if(ui.view === "day")       next = addDays(a, dir);
+  else if(ui.view === "week") next = addDays(a, dir*7);
+  else                        next = addMonths(a, dir);
+  ui.anchor = toLocalStr(startOfDay(next));
+  scrollPending = true;
+  saveLocal(); render();
+}
+
+/* =========================================================================
+   ヘルプ
+   ========================================================================= */
+const HELP_HTML = `
+<p><strong>基本操作</strong></p>
+<ul>
+  <li>上部の <strong>日／週／月</strong> で表示を切り替えます。日＝1時間単位、週＝1日単位、月＝1週間単位の目盛りです。</li>
+  <li>行が担当者、バーがその人の作業です。<strong>バーをクリック</strong>で編集、<strong>空いている所をクリック</strong>でその時間帯に新規作成できます。</li>
+  <li>同じ時間に重なる作業は自動的に段組みで表示されます。</li>
+  <li><kbd>Esc</kbd> でダイアログを閉じます。</li>
+</ul>
+
+<p><strong>共有フォルダで複数人と使う</strong></p>
+<ul>
+  <li>共有フォルダに <code>team-schedule.json</code> を置き、各PCで「共有ファイルを開く」から選びます。以降は<strong>自動で保存・約5秒ごとに再読み込み</strong>されます。</li>
+  <li>保存時は他の人の変更を読み直してから書き込むため、別々の作業を同時に編集しても消えにくくなっています（同じ作業を同時に編集した場合は<strong>後から保存した内容が残ります</strong>）。</li>
+  <li>この自動同期は <strong>Microsoft Edge / Google Chrome</strong> で、かつ <strong>http(s) 経由で開いた場合</strong>に使えます。
+      ブラウザの制限により、<code>file://</code>（HTMLをダブルクリックで直接開く）では使えません。</li>
+  <li><code>file://</code> で使う場合は、下の <strong>「JSONを書き出す／読み込む」</strong> で共有フォルダのファイルをやり取りしてください（読み込み時はマージされます）。</li>
+</ul>
+
+<p><strong>データについて</strong></p>
+<ul>
+  <li>入力内容はこのPCのブラウザにも自動保存されるため、共有ファイルに未接続でもデータは残ります。</li>
+  <li>バックアップは「JSONを書き出す」で取得できます。</li>
+</ul>
+`;
+
+/* =========================================================================
+   起動
+   ========================================================================= */
+function init(){
+  loadLocal();
+  seedIfEmpty();
+  $("helpBody").innerHTML = HELP_HTML;
+
+  $("viewSeg").addEventListener("click", ev => {
+    const v = ev.target.dataset && ev.target.dataset.view;
+    if(!v) return;
+    ui.view = v; scrollPending = true; saveLocal(); render();
+  });
+  $("prevBtn").addEventListener("click", () => move(-1));
+  $("nextBtn").addEventListener("click", () => move(1));
+  $("todayBtn").addEventListener("click", () => {
+    ui.anchor = toLocalStr(startOfDay(new Date()));
+    scrollPending = true;
+    saveLocal(); render();
+  });
+
+  $("addBtn").addEventListener("click", () => {
+    const first = liveMembers()[0];
+    if(!first){ alert("先に「メンバー」から担当者を追加してください。"); return; }
+    const r = currentRange();
+    const now = new Date();
+    const base = (now >= r.start && now < r.end) ? now : r.start;
+    openTask(null, first.id, base);
+  });
+
+  $("taskSave").addEventListener("click", saveTask);
+  $("taskCancel").addEventListener("click", closeTask);
+  $("taskDelete").addEventListener("click", deleteTask);
+
+  $("memberBtn").addEventListener("click", () => { renderMembers(); $("memberMask").hidden = false; });
+  $("memberClose").addEventListener("click", () => { $("memberMask").hidden = true; });
+  $("addMember").addEventListener("click", addMemberFromInput);
+  $("newMember").addEventListener("keydown", e => { if(e.key === "Enter") addMemberFromInput(); });
+
+  $("openBtn").addEventListener("click", pickFile);
+  $("saveBtn").addEventListener("click", () => fileHandle ? saveToFile(false) : exportJson());
+  $("helpBtn").addEventListener("click", () => { $("helpMask").hidden = false; });
+  $("helpClose").addEventListener("click", () => { $("helpMask").hidden = true; });
+  $("exportBtn").addEventListener("click", exportJson);
+  $("importBtn").addEventListener("click", () => $("importFile").click());
+  $("importFile").addEventListener("change", e => {
+    if(e.target.files[0]) importJson(e.target.files[0]);
+    e.target.value = "";
+  });
+
+  document.addEventListener("keydown", e => {
+    if(e.key !== "Escape") return;
+    ["taskMask","memberMask","helpMask"].forEach(id => { $(id).hidden = true; });
+    editingId = null;
+  });
+
+  window.addEventListener("beforeunload", e => {
+    if(!dirty || !fileHandle) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+
+  /* 現在時刻ラインを1分ごとに更新 */
+  setInterval(render, 60000);
+
+  render();
+  refreshSyncLabel();
+}
+init();
+</script>
+</body>
+</html>
