@@ -10,7 +10,7 @@
   :root{
     --bg:#f4f5f7; --panel:#ffffff; --line:#e2e5ea; --line-strong:#c8cdd6;
     --text:#1f2430; --muted:#6b7280; --accent:#4F6AF0; --danger:#e0453e;
-    --row-h:34px; --lane-h:26px; --name-w:150px; --head-h:46px;
+    --row-h:34px; --lane-h:26px; --name-w:172px; --head-h:46px;
   }
   *{box-sizing:border-box;}
   html,body{height:100%;}
@@ -88,7 +88,16 @@
     background:var(--panel); border-right:1px solid var(--line-strong);
     display:flex; align-items:center; gap:6px; padding:4px 10px; font-weight:600;
   }
-  .name .count{font-weight:400; font-size:11px; color:var(--muted);}
+  /* 名前が長くても折り返さず、末尾を省略して1行に収める */
+  .name>span:first-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
+  .name .count{font-weight:400; font-size:11px; color:var(--muted); flex:none; white-space:nowrap;}
+  /* このPCの利用者の行を目立たせる */
+  .row.me .name{background:#eef3ff; box-shadow:inset 3px 0 0 var(--accent);}
+  .row.me:hover .name{background:#e6edff;}
+  .name .youare{
+    font-size:10px; font-weight:600; color:#fff; background:var(--accent);
+    border-radius:3px; padding:1px 4px; flex:none;
+  }
   .lanes{position:relative; flex:1; cursor:crosshair;}
   .gridline{position:absolute; top:0; bottom:0; border-left:1px solid var(--line); pointer-events:none;}
   .gridline.major{border-left-color:var(--line-strong);}
@@ -180,6 +189,16 @@
   }
   .field textarea{resize:vertical; min-height:60px;}
   .zhint{font-size:11px; color:#9aa1ad; margin-top:4px; min-height:14px;}
+  .mefield{
+    background:#f4f7fd; border:1px solid #dde5f5; border-radius:8px;
+    padding:10px 12px; margin-bottom:14px;
+  }
+  .mefield label{display:block; font-size:12px; font-weight:600; margin-bottom:6px;}
+  .mefield select{
+    width:100%; padding:7px 9px; border:1px solid var(--line-strong);
+    border-radius:6px; font:inherit; background:#fff;
+  }
+  .mefield .note{margin:8px 0 0;}
   .two{display:flex; gap:10px;} .two>*{flex:1;}
   .field label .pick{float:right; display:flex; gap:6px; align-items:center;}
   .field label .pick button{
@@ -319,6 +338,14 @@
   <div class="modal">
     <h2>メンバー管理</h2>
     <div class="body">
+      <div class="mefield">
+        <label for="meSel">このPCで入力する人</label>
+        <select id="meSel"></select>
+        <p class="note">
+          新しい作業の担当者に最初から選ばれ、一覧でもその人の行が目立つようになります。
+          この設定はこのPCだけのもので、書き出すJSONには含まれません。
+        </p>
+      </div>
       <ul class="mlist" id="memberList"></ul>
       <div class="two" style="margin-top:12px;">
         <input id="newMember" placeholder="新しいメンバー名" style="padding:7px 9px;border:1px solid var(--line-strong);border-radius:6px;font:inherit;">
@@ -414,7 +441,8 @@ const fmtYMD  = d => `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate(
    状態
    ========================================================================= */
 let state = { version:1, members:[], tasks:[] };
-let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())), showList:true };
+/* ui はこのPC専用の設定。書き出すJSONには含めない（meId＝このPCで入力する人） */
+let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())), showList:true, meId:"" };
 let dirty = false;              // ファイルに未保存の変更があるか
 let fileHandle = null;          // File System Access API のハンドル
 let lastFileModified = 0;       // 直近に読み込んだファイルの更新時刻
@@ -514,6 +542,7 @@ function loadLocal(){
       if(["day","week","month"].includes(u.view)) ui.view = u.view;
       if(parseLocal(u.anchor)) ui.anchor = u.anchor;
       if(typeof u.showList === "boolean") ui.showList = u.showList;
+      if(typeof u.meId === "string") ui.meId = u.meId;
     }
   }catch(e){}
 }
@@ -679,12 +708,15 @@ function render(){
     const laneCount = Math.max(1, laneEnds.length);
 
     const rowEl = document.createElement("div");
-    rowEl.className = "row";
+    const isMe = row.id === ui.meId;
+    rowEl.className = "row" + (isMe ? " me" : "");
     rowEl.style.height = (laneCount * 26 + 8) + "px";
 
     const nameEl = document.createElement("div");
     nameEl.className = "name";
-    nameEl.innerHTML = `<span>${esc(row.name)}</span><span class="count">${list.length}件</span>`;
+    nameEl.innerHTML = `<span>${esc(row.name)}</span>`
+      + (isMe ? `<span class="youare">あなた</span>` : "")
+      + `<span class="count">${list.length}件</span>`;
     rowEl.appendChild(nameEl);
 
     const lanes = document.createElement("div");
@@ -999,7 +1031,20 @@ const closeTask = () => { $("taskMask").hidden = true; editingId = null; };
 /* =========================================================================
    メンバー管理
    ========================================================================= */
+/** 「このPCで入力する人」の選択肢を描く */
+function renderMeSelect(){
+  const sel = $("meSel");
+  sel.innerHTML = `<option value="">（指定しない）</option>`;
+  for(const m of liveMembers()){
+    const o = document.createElement("option");
+    o.value = m.id; o.textContent = m.name;
+    sel.appendChild(o);
+  }
+  sel.value = liveMembers().some(m => m.id === ui.meId) ? ui.meId : "";
+}
+
 function renderMembers(){
+  renderMeSelect();
   const ul = $("memberList");
   ul.innerHTML = "";
   const list = liveMembers();
@@ -1163,22 +1208,56 @@ function startPolling(){
 }
 
 /* 手動の書き出し／読み込み（file:// で開いた場合のフォールバック） */
+/** 誰がいつ書き出したファイルか分かるファイル名にする（メールで往復させるため） */
+function exportFileName(){
+  const me = liveMembers().find(m => m.id === ui.meId);
+  const d = new Date();
+  const day = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+  const who = me ? "_" + me.name.replace(/[\\/:*?"<>|\s]+/g, "") : "";
+  return `team-schedule_${day}${who}.json`;
+}
 function exportJson(){
   const blob = new Blob([JSON.stringify(purge(state), null, 2)], { type:"application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "team-schedule.json";
+  a.download = exportFileName();
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+/** マージ前後を比べて、何件増えた/変わった/消えたかを数える */
+function diffSummary(before, after){
+  const prev = new Map(before.tasks.map(t => [t.id, t]));
+  const prevM = new Map(before.members.map(m => [m.id, m]));
+  let added = 0, updated = 0, removed = 0, newMembers = 0;
+  for(const t of after.tasks){
+    const o = prev.get(t.id);
+    if(!o){ if(!t.deleted) added++; continue; }
+    if(o.updatedAt === t.updatedAt && o.deleted === t.deleted) continue;
+    if(t.deleted && !o.deleted) removed++; else if(!t.deleted) updated++;
+  }
+  for(const m of after.members) if(!prevM.has(m.id) && !m.deleted) newMembers++;
+  return { added, updated, removed, newMembers };
+}
+
 function importJson(file){
   const r = new FileReader();
   r.onload = () => {
     try{
       const remote = normalize(JSON.parse(r.result));
+      const before = state;
       state = purge(mergeState(state, remote));
+      const d = diffSummary(before, state);
       saveLocal(); render(); refreshSyncLabel();
-      alert("読み込みました（既存のデータとマージしました）。");
+
+      const parts = [];
+      if(d.added)   parts.push(`追加 ${d.added}件`);
+      if(d.updated) parts.push(`更新 ${d.updated}件`);
+      if(d.removed) parts.push(`削除 ${d.removed}件`);
+      if(d.newMembers) parts.push(`メンバー追加 ${d.newMembers}名`);
+      alert(parts.length
+        ? `読み込みました（既存のデータとマージ）。\n\n${parts.join(" / ")}`
+        : "読み込みました。反映される変更はありませんでした。");
     }catch(e){
       alert("読み込みに失敗しました。JSONの形式を確認してください。");
     }
@@ -1235,10 +1314,30 @@ const HELP_HTML = `
   <li><code>file://</code> で使う場合は、下の <strong>「JSONを書き出す／読み込む」</strong> で共有フォルダのファイルをやり取りしてください（読み込み時はマージされます）。</li>
 </ul>
 
+<p><strong>各自のPCで入力し、メールでやり取りする</strong></p>
+<ul>
+  <li>共有フォルダが使えない相手（別拠点など）とは、<strong>各PCで入力 → JSONをメールで交換</strong>という運用ができます。
+      インターネット接続もサーバーも不要です。</li>
+  <li>まず「メンバー」画面で <strong>「このPCで入力する人」</strong> を選んでください。
+      新しい作業の担当者が最初からその人になり、一覧でも自分の行に「あなた」と表示されます。</li>
+  <li>各自が自分の予定を入力したら「JSONを書き出す」。ファイル名には<strong>日付と名前が自動で付く</strong>ので、
+      <code>team-schedule_20260728_山田太郎.json</code> のように誰の分か分かります。</li>
+  <li>取りまとめ役が全員のJSONを順に「JSONを読み込む」で取り込むと、<strong>全員分が1つにまとまります</strong>。
+      読み込むたびに「追加◯件／更新◯件／削除◯件」と表示されるので、反映されたか確認できます。</li>
+  <li>まとまったJSONを全員に返信し、各自が読み込めば全員の画面が揃います。</li>
+  <li>読み込みは<strong>上書きではなくマージ</strong>です。作業ごとに更新時刻の新しい方が残るため、
+      別々の人が別々の予定を入力していれば、両方とも残ります。
+      削除も相手側に正しく伝わります（削除の記録を30日間保持）。</li>
+  <li>同じ作業を2人が同時に直した場合だけ、<strong>後から編集した方が残ります</strong>。
+      担当を分けておけば衝突しません。</li>
+</ul>
+
 <p><strong>データについて</strong></p>
 <ul>
   <li>入力内容はこのPCのブラウザにも自動保存されるため、共有ファイルに未接続でもデータは残ります。</li>
   <li>バックアップは「JSONを書き出す」で取得できます。</li>
+  <li>このアプリは <code>gantt.html</code> 1ファイルで完結しています。
+      <strong>インターネット接続・サーバー・GitHub・アカウントは一切不要</strong>で、外部との通信も行いません。</li>
 </ul>
 `;
 
@@ -1264,12 +1363,19 @@ function init(){
   });
 
   $("addBtn").addEventListener("click", () => {
-    const first = liveMembers()[0];
-    if(!first){ alert("先に「メンバー」から担当者を追加してください。"); return; }
+    const list = liveMembers();
+    if(!list.length){ alert("先に「メンバー」から担当者を追加してください。"); return; }
+    /* このPCの利用者が決まっていれば、その人を初期の担当者にする */
+    const me = list.find(m => m.id === ui.meId) || list[0];
     const r = currentRange();
     const now = new Date();
     const base = (now >= r.start && now < r.end) ? now : r.start;
-    openTask(null, first.id, base);
+    openTask(null, me.id, base);
+  });
+
+  $("meSel").addEventListener("change", e => {
+    ui.meId = e.target.value;
+    saveLocal(); render();
   });
 
   $("pickAll").addEventListener("click", () => {
