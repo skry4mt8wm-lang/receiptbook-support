@@ -52,7 +52,9 @@
   #syncText{max-width:270px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 
   /* ---------- chart ---------- */
-  #scroller{flex:1; overflow:auto; background:var(--panel); position:relative;}
+  /* チャートは中身の高さぶんだけ使い、余った縦幅は下部の作業一覧に回す */
+  #scroller{flex:1 1 auto; min-height:140px; overflow:auto; background:var(--panel); position:relative;}
+  body.has-list #scroller{flex:0 0 auto; max-height:60%;}   /* 中身ぶん（最大でも画面の6割） */
   #board{position:relative; min-width:100%;}
 
   .head{
@@ -70,6 +72,12 @@
     padding:4px 0 0 6px; font-size:11px; color:var(--muted); overflow:hidden; white-space:nowrap;
   }
   .tick.major{border-left-color:var(--line-strong); color:var(--text); font-weight:600;}
+  .tick .z{                                  /* I TIME の下に小さく併記する Z TIME */
+    display:block; margin-top:2px; font-size:10px; font-weight:400;
+    color:#9aa1ad; letter-spacing:.02em;
+  }
+  .corner .legend{font-weight:400; font-size:10px; color:#9aa1ad; margin-top:2px;}
+  .head .corner{flex-direction:column; align-items:flex-start; justify-content:center;}
   .tick.holiday{background:#fdf1f1;}
   .tick.saturday{background:#f1f5fd;}
 
@@ -111,6 +119,43 @@
   }
   .empty{padding:40px; text-align:center; color:var(--muted);}
 
+  /* ---------- 週表示の作業一覧（文字） ---------- */
+  #daylist{
+    flex:1 1 auto; min-height:150px; display:flex; flex-direction:column;
+    background:var(--panel); border-top:2px solid var(--line-strong);
+  }
+  #daylist[hidden]{display:none;}
+  .dl-head{
+    display:flex; align-items:center; gap:10px; padding:7px 14px;
+    border-bottom:1px solid var(--line); font-size:13px; flex:none;
+  }
+  .dl-note{font-size:11px; color:var(--muted);}
+  .dl-grid{
+    flex:1; overflow:auto; display:grid; grid-template-columns:repeat(7, minmax(180px, 1fr));
+    gap:1px; background:var(--line); padding:1px;
+  }
+  .dl-day{background:var(--panel); padding:8px 10px; min-width:0;}
+  .dl-day.sun{background:#fdf7f7;} .dl-day.sat{background:#f7f9fd;}
+  .dl-date{
+    font-weight:600; font-size:12px; margin-bottom:6px; cursor:pointer;
+    border-bottom:1px solid var(--line); padding-bottom:4px;
+  }
+  .dl-date:hover{color:var(--accent);}
+  .dl-date .z{font-weight:400; font-size:10px; color:#9aa1ad; margin-left:4px;}
+  .dl-day ul{list-style:none; margin:0; padding:0;}
+  .dl-day li{
+    display:flex; gap:6px; padding:5px 4px; border-radius:5px; cursor:pointer;
+    font-size:12px; line-height:1.45; align-items:flex-start;
+  }
+  .dl-day li:hover{background:#eef1f6;}
+  .dl-day li .cdot{width:8px; height:8px; border-radius:2px; flex:none; margin-top:4px;}
+  .dl-day li .tx{min-width:0;}
+  .dl-day li .tm{font-weight:600; white-space:nowrap;}
+  .dl-day li .tm .z{font-weight:400; color:#9aa1ad; font-size:10px; margin-left:4px;}
+  .dl-day li .ti{display:block; overflow-wrap:anywhere;}
+  .dl-day li .mb{display:block; color:var(--muted); font-size:11px; overflow-wrap:anywhere;}
+  .dl-day .none{color:#b7bcc6; font-size:11px; padding:4px;}
+
   /* ---------- modal ---------- */
   .mask{
     position:fixed; inset:0; background:rgba(20,24,33,.45); display:flex;
@@ -134,6 +179,7 @@
     font:inherit; background:#fff; color:var(--text);
   }
   .field textarea{resize:vertical; min-height:60px;}
+  .zhint{font-size:11px; color:#9aa1ad; margin-top:4px; min-height:14px;}
   .two{display:flex; gap:10px;} .two>*{flex:1;}
   .field label .pick{float:right; display:flex; gap:6px; align-items:center;}
   .field label .pick button{
@@ -189,6 +235,7 @@
 
   <button class="btn primary" id="addBtn">＋ 新規作業</button>
   <button class="btn" id="memberBtn">メンバー</button>
+  <button class="btn" id="listBtn" hidden>作業一覧</button>
 
   <span class="spacer"></span>
 
@@ -204,6 +251,17 @@
 <div id="scroller">
   <div id="board"></div>
 </div>
+
+<!-- 週表示のときだけ出す、その日の作業の文字一覧 -->
+<section id="daylist" hidden>
+  <div class="dl-head">
+    <strong>この週の作業一覧</strong>
+    <span class="dl-note">日付をクリックするとその日の表示に切り替わります</span>
+    <span class="spacer"></span>
+    <button class="btn" id="dlClose">一覧を閉じる</button>
+  </div>
+  <div class="dl-grid" id="dlGrid"></div>
+</section>
 
 <!-- ===== task modal ===== -->
 <div class="mask" id="taskMask" hidden>
@@ -230,10 +288,12 @@
         <div class="field">
           <label>開始</label>
           <input id="fStart" type="datetime-local">
+          <div class="zhint" id="zStart"></div>
         </div>
         <div class="field">
           <label>終了</label>
           <input id="fEnd" type="datetime-local">
+          <div class="zhint" id="zEnd"></div>
         </div>
       </div>
       <div class="field">
@@ -325,6 +385,26 @@ function parseLocal(s){
   const d = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]);
   return isNaN(d) ? null : d;
 }
+/* --- Z TIME（UTC）関連 -------------------------------------------------
+   画面の時刻はPCのローカル時刻（日本なら I TIME = UTC+9）で扱い、
+   その下に Z TIME（UTC）を併記する。 */
+/** ローカルのUTCオフセットに対応するタイムゾーン文字（+9 なら "I"、UTCなら "Z"） */
+function localTzLetter(){
+  const off = -new Date().getTimezoneOffset() / 60;      // 東が正
+  if(!Number.isInteger(off)) return "LT";                // 30分ずれの地域など
+  if(off === 0) return "Z";
+  const east = "ABCDEFGHIKLM";                           // +1〜+12（J は使わない）
+  const west = "NOPQRSTUVWXY";                           // -1〜-12
+  if(off > 0 && off <= 12) return east[off-1];
+  if(off < 0 && off >= -12) return west[-off-1];
+  return "LT";
+}
+const TZ_LETTER = localTzLetter();
+/** UTC の時刻部分（例 "0300Z"） */
+const zHM  = d => `${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}Z`;
+/** UTC の日付＋時刻（DTG 形式、例 "261500Z"） */
+const zDTG = d => `${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}Z`;
+
 const WD = ["日","月","火","水","木","金","土"];
 const fmtHM   = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const fmtMD   = d => `${d.getMonth()+1}/${d.getDate()}`;
@@ -334,7 +414,7 @@ const fmtYMD  = d => `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate(
    状態
    ========================================================================= */
 let state = { version:1, members:[], tasks:[] };
-let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())) };
+let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())), showList:true };
 let dirty = false;              // ファイルに未保存の変更があるか
 let fileHandle = null;          // File System Access API のハンドル
 let lastFileModified = 0;       // 直近に読み込んだファイルの更新時刻
@@ -433,6 +513,7 @@ function loadLocal(){
       const u = JSON.parse(raw);
       if(["day","week","month"].includes(u.view)) ui.view = u.view;
       if(parseLocal(u.anchor)) ui.anchor = u.anchor;
+      if(typeof u.showList === "boolean") ui.showList = u.showList;
     }
   }catch(e){}
 }
@@ -532,7 +613,8 @@ function render(){
   head.className = "head";
   const corner = document.createElement("div");
   corner.className = "corner";
-  corner.textContent = "メンバー";
+  corner.innerHTML = `<span>メンバー</span>`
+    + `<span class="legend">上段 ${TZ_LETTER} TIME / 下段 Z TIME</span>`;
   head.appendChild(corner);
 
   const tickWrap = document.createElement("div");
@@ -543,7 +625,9 @@ function render(){
       + (t.dow === 0 ? " holiday" : t.dow === 6 ? " saturday" : "");
     el.style.left = pct(t.start.getTime()) + "%";
     el.style.width = (pct(t.end.getTime()) - pct(t.start.getTime())) + "%";
-    el.textContent = t.label;
+    /* 日表示は時刻だけ、週/月表示は日付を含む DTG で Z TIME を併記する */
+    el.innerHTML = `<span>${esc(t.label)}</span>`
+      + `<span class="z">${ui.view === "day" ? zHM(t.start) : zDTG(t.start)}</span>`;
     tickWrap.appendChild(el);
   });
   head.appendChild(tickWrap);
@@ -688,6 +772,80 @@ function render(){
       sc.scrollLeft = 0;
     }
   }
+
+  /* 週表示のときだけ、下部に作業内容の文字一覧を出す */
+  $("listBtn").hidden = ui.view !== "week";
+  $("listBtn").textContent = ui.showList ? "作業一覧を隠す" : "作業一覧を表示";
+  renderDayList(range);
+}
+
+/* -------------------------------------------------------------------------
+   週表示の「作業一覧」（文字表示）
+   ------------------------------------------------------------------------- */
+function renderDayList(range){
+  const sec = $("daylist");
+  const show = ui.view === "week" && ui.showList;
+  document.body.classList.toggle("has-list", show);
+  if(!show){ sec.hidden = true; return; }
+  sec.hidden = false;
+
+  const grid = $("dlGrid");
+  grid.innerHTML = "";
+  const members = liveMembers();
+  const all = liveTasks();
+
+  for(let i=0; i<7; i++){
+    const day = addDays(range.start, i);
+    const ds = day.getTime(), de = addDays(day,1).getTime();
+
+    const col = document.createElement("div");
+    col.className = "dl-day" + (day.getDay() === 0 ? " sun" : day.getDay() === 6 ? " sat" : "");
+
+    const head = document.createElement("div");
+    head.className = "dl-date";
+    head.innerHTML = `${fmtMD(day)}（${WD[day.getDay()]}）<span class="z">${zDTG(day)}</span>`;
+    head.title = "クリックでこの日の表示に切り替え";
+    head.addEventListener("click", () => {
+      ui.anchor = toLocalStr(day); ui.view = "day";
+      scrollPending = true; saveLocal(); render();
+    });
+    col.appendChild(head);
+
+    /* その日にかかる作業を開始時刻順に並べる */
+    const items = all
+      .map(t => ({ t, s:parseLocal(t.start), e:parseLocal(t.end) }))
+      .filter(x => x.s && x.e && x.e.getTime() > ds && x.s.getTime() < de)
+      .sort((a,b) => a.s - b.s || a.t.title.localeCompare(b.t.title,"ja"));
+
+    if(!items.length){
+      col.insertAdjacentHTML("beforeend", `<div class="none">予定なし</div>`);
+      grid.appendChild(col);
+      continue;
+    }
+
+    const ul = document.createElement("ul");
+    for(const x of items){
+      const names = x.t.memberIds
+        .map(id => (members.find(m => m.id === id) || {}).name)
+        .filter(Boolean);
+      /* 日をまたぐ作業は、前日から続く / 翌日へ続く を矢印で示す */
+      const contFrom = x.s.getTime() < ds, contTo = x.e.getTime() > de;
+      const timeTxt = `${contFrom ? "←" : ""}${fmtHM(x.s)}–${fmtHM(x.e)}${contTo ? "→" : ""}`;
+
+      const li = document.createElement("li");
+      li.innerHTML =
+        `<span class="cdot" style="background:${esc(x.t.color)}"></span>` +
+        `<span class="tx">` +
+          `<span class="tm">${esc(timeTxt)}<span class="z">${zHM(x.s)}–${zHM(x.e)}</span></span>` +
+          `<span class="ti">${esc(x.t.title || "(無題)")}</span>` +
+          `<span class="mb">${names.length ? esc(names.join("、")) : "未割当"}</span>` +
+        `</span>`;
+      li.addEventListener("click", () => openTask(x.t.id));
+      ul.appendChild(li);
+    }
+    col.appendChild(ul);
+    grid.appendChild(col);
+  }
 }
 
 function esc(s){
@@ -737,6 +895,14 @@ function updatePickCount(){
   $("pickCount").textContent = n ? `${n}名選択中` : "";
 }
 
+/** 入力された日時に対応する Z TIME を、入力欄の下に表示する */
+function updateZHints(){
+  [["fStart","zStart"],["fEnd","zEnd"]].forEach(([src,dst]) => {
+    const d = parseLocal($(src).value);
+    $(dst).textContent = d ? `Z TIME: ${zDTG(d)}` : "";
+  });
+}
+
 function openTask(id, presetMember, presetStart){
   editingId = id;
   $("taskErr").textContent = "";
@@ -765,6 +931,7 @@ function openTask(id, presetMember, presetStart){
     $("taskDelete").hidden = true;
   }
   renderSwatches();
+  updateZHints();
   $("taskMask").hidden = false;
   $("fTitle").focus();
 }
@@ -1042,6 +1209,10 @@ const HELP_HTML = `
   <li>上部の <strong>日／週／月</strong> で表示を切り替えます。日＝1時間単位、週＝1日単位、月＝1週間単位の目盛りです。</li>
   <li>行が担当者、バーがその人の作業です。<strong>バーをクリック</strong>で編集、<strong>空いている所をクリック</strong>でその時間帯に新規作成できます。</li>
   <li>同じ時間に重なる作業は自動的に段組みで表示されます。</li>
+  <li>時間軸の目盛りは、上段が <strong>${TZ_LETTER} TIME（このPCの時刻）</strong>、下段が小さく <strong>Z TIME（UTC）</strong> です。
+      作業の入力画面でも、開始・終了の下に Z TIME を表示します（週/月表示や入力欄は <code>日日時時分分Z</code> の形式）。</li>
+  <li><strong>週表示</strong>では、チャートの下にその週の作業が<strong>日ごとの文字一覧</strong>で並びます。
+      「作業一覧を隠す／表示」で切り替えられ、一覧の日付をクリックするとその日の表示に移動します。</li>
 </ul>
 
 <p><strong>複数人で行う作業</strong></p>
@@ -1107,9 +1278,15 @@ function init(){
   $("pickNone").addEventListener("click", () => {
     memberChecks().forEach(c => { c.checked = false; }); updatePickCount();
   });
+  $("fStart").addEventListener("input", updateZHints);
+  $("fEnd").addEventListener("input", updateZHints);
   $("taskSave").addEventListener("click", saveTask);
   $("taskCancel").addEventListener("click", closeTask);
   $("taskDelete").addEventListener("click", deleteTask);
+
+  const toggleList = () => { ui.showList = !ui.showList; saveLocal(); render(); };
+  $("listBtn").addEventListener("click", toggleList);
+  $("dlClose").addEventListener("click", toggleList);
 
   $("memberBtn").addEventListener("click", () => { renderMembers(); $("memberMask").hidden = false; });
   $("memberClose").addEventListener("click", () => { $("memberMask").hidden = true; });
