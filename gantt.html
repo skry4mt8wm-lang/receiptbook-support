@@ -97,6 +97,10 @@
   .bar:hover{filter:brightness(1.08);}
   .bar .t{font-weight:600; overflow:hidden; text-overflow:ellipsis; min-width:0;}
   .bar .h{opacity:.85; font-size:11px; flex:none;}   /* 幅が足りるバーにだけ付ける */
+  .bar .n{                                            /* 複数人で共有している作業の人数 */
+    flex:none; font-size:10px; font-weight:600; line-height:1;
+    background:rgba(255,255,255,.28); border-radius:3px; padding:2px 4px;
+  }
   .bar.clipL{border-top-left-radius:0; border-bottom-left-radius:0;}
   .bar.clipR{border-top-right-radius:0; border-bottom-right-radius:0;}
 
@@ -131,6 +135,23 @@
   }
   .field textarea{resize:vertical; min-height:60px;}
   .two{display:flex; gap:10px;} .two>*{flex:1;}
+  .field label .pick{float:right; display:flex; gap:6px; align-items:center;}
+  .field label .pick button{
+    border:1px solid var(--line-strong); background:#fff; border-radius:4px;
+    padding:1px 7px; font-size:11px; color:var(--text);
+  }
+  .checks{
+    border:1px solid var(--line-strong); border-radius:6px;
+    max-height:170px; overflow:auto; padding:3px 8px; background:#fff;
+  }
+  .checks label{
+    display:flex; align-items:center; gap:8px; padding:5px 2px; cursor:pointer;
+    font-size:14px; color:var(--text); margin:0;
+  }
+  .checks label+label{border-top:1px solid #f0f2f5;}
+  .checks label:hover{background:#f7f9fc;}
+  .checks input[type=checkbox]{width:auto; margin:0; flex:none; accent-color:var(--accent);}
+  .checks .none{color:var(--muted); font-size:12px; padding:6px 2px;}
   .swatches{display:flex; gap:8px; flex-wrap:wrap;}
   .swatch{width:28px; height:28px; border-radius:6px; border:2px solid transparent; cursor:pointer;}
   .swatch.on{border-color:var(--text);}
@@ -191,8 +212,15 @@
     <div class="body">
       <div class="err" id="taskErr"></div>
       <div class="field">
-        <label>担当者</label>
-        <select id="fMember"></select>
+        <label>
+          担当者（複数選択可）
+          <span class="pick">
+            <button type="button" id="pickAll">全員</button>
+            <button type="button" id="pickNone">解除</button>
+            <span id="pickCount"></span>
+          </span>
+        </label>
+        <div class="checks" id="fMembers"></div>
       </div>
       <div class="field">
         <label>作業内容</label>
@@ -341,7 +369,10 @@ function normalize(raw){
       .filter(t => t && typeof t.id === "string")
       .map(t => ({
         id: t.id,
-        memberId: typeof t.memberId === "string" ? t.memberId : "",
+        /* 担当者は複数持てる。旧形式(memberId 単一)のデータも読み込めるようにする */
+        memberIds: Array.isArray(t.memberIds)
+          ? [...new Set(t.memberIds.filter(x => typeof x === "string" && x))]
+          : (typeof t.memberId === "string" && t.memberId ? [t.memberId] : []),
         title: typeof t.title === "string" ? t.title : "",
         start: parseLocal(t.start) ? t.start : null,
         end:   parseLocal(t.end)   ? t.end   : null,
@@ -525,11 +556,16 @@ function render(){
     return s && e && e.getTime() > rs && s.getTime() < re;   // レンジに重なるものだけ
   });
 
+  /* 1件の作業に複数の担当者がいる場合、その全員の行に同じバーを表示する */
   const byMember = new Map();
-  for(const t of tasks){
-    const key = members.some(m => m.id === t.memberId) ? t.memberId : "__none__";
+  const push = (key, t) => {
     if(!byMember.has(key)) byMember.set(key, []);
     byMember.get(key).push(t);
+  };
+  for(const t of tasks){
+    const assigned = t.memberIds.filter(id => members.some(m => m.id === id));
+    if(assigned.length) assigned.forEach(id => push(id, t));
+    else push("__none__", t);
   }
 
   const rows = members.map(m => ({ id:m.id, name:m.name }));
@@ -601,11 +637,17 @@ function render(){
         ? `${fmtHM(sd)}–${fmtHM(ed)}`
         : `${fmtMD(sd)} ${fmtHM(sd)}–${fmtMD(ed)} ${fmtHM(ed)}`;
       /* 細いバーでは時刻を省き、作業内容の表示を優先する（詳細は title 属性に入れる） */
+      const names = p.t.memberIds
+        .map(id => (members.find(m => m.id === id) || {}).name)
+        .filter(Boolean);
+      const shared = names.length > 1;
       const barPx = (right - left) / 100 * tlWidth;
-      const needPx = 60 + timeTxt.length * 7;
+      const needPx = 60 + timeTxt.length * 7 + (shared ? 30 : 0);
       bar.innerHTML = `<span class="t">${esc(p.t.title || "(無題)")}</span>`
+        + (shared ? `<span class="n">${names.length}名</span>` : "")
         + (barPx >= needPx ? `<span class="h">${timeTxt}</span>` : "");
       bar.title = `${p.t.title || "(無題)"}\n${fmtYMD(sd)} ${fmtHM(sd)} 〜 ${fmtYMD(ed)} ${fmtHM(ed)}`
+        + `\n担当: ${names.length ? names.join("、") : "未割当"}`
         + (p.t.note ? `\n\n${p.t.note}` : "");
       bar.addEventListener("click", ev => { ev.stopPropagation(); openTask(p.t.id); });
       lanes.appendChild(bar);
@@ -666,22 +708,44 @@ function snap(date){
   return d;
 }
 
+/** 担当者チェックボックス一覧を描く。selected は選択済みIDの配列。 */
+function renderMemberChecks(selected){
+  const box = $("fMembers");
+  box.innerHTML = "";
+  const list = liveMembers();
+  if(!list.length){
+    box.innerHTML = `<div class="none">メンバーが登録されていません。</div>`;
+  }
+  for(const m of list){
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = m.id;
+    cb.checked = selected.includes(m.id);
+    cb.addEventListener("change", updatePickCount);
+    const span = document.createElement("span");
+    span.textContent = m.name;
+    label.append(cb, span);
+    box.appendChild(label);
+  }
+  updatePickCount();
+}
+const memberChecks = () => [...$("fMembers").querySelectorAll("input[type=checkbox]")];
+const selectedMemberIds = () => memberChecks().filter(c => c.checked).map(c => c.value);
+function updatePickCount(){
+  const n = selectedMemberIds().length;
+  $("pickCount").textContent = n ? `${n}名選択中` : "";
+}
+
 function openTask(id, presetMember, presetStart){
   editingId = id;
-  const sel = $("fMember");
-  sel.innerHTML = "";
-  for(const m of liveMembers()){
-    const o = document.createElement("option");
-    o.value = m.id; o.textContent = m.name;
-    sel.appendChild(o);
-  }
   $("taskErr").textContent = "";
 
   if(id){
     const t = state.tasks.find(x => x.id === id);
     if(!t) return;
     $("taskTitle").textContent = "作業の編集";
-    sel.value = t.memberId;
+    renderMemberChecks(t.memberIds);
     $("fTitle").value = t.title;
     $("fStart").value = t.start;
     $("fEnd").value = t.end;
@@ -690,7 +754,7 @@ function openTask(id, presetMember, presetStart){
     $("taskDelete").hidden = false;
   }else{
     $("taskTitle").textContent = "作業の追加";
-    if(presetMember) sel.value = presetMember;
+    renderMemberChecks(presetMember ? [presetMember] : []);
     const s = snap(presetStart || new Date());
     const e = new Date(s.getTime() + (ui.view === "day" ? 3600000 : 8*3600000));
     $("fTitle").value = "";
@@ -719,14 +783,14 @@ function renderSwatches(){
 }
 
 function saveTask(){
-  const memberId = $("fMember").value;
+  const memberIds = selectedMemberIds();
   const title = $("fTitle").value.trim();
   const startStr = $("fStart").value;
   const endStr = $("fEnd").value;
   const s = parseLocal(startStr), e = parseLocal(endStr);
   const err = $("taskErr");
 
-  if(!memberId){ err.textContent = "担当者を選択してください。"; return; }
+  if(!memberIds.length){ err.textContent = "担当者を1人以上選択してください。"; return; }
   if(!title){ err.textContent = "作業内容を入力してください。"; return; }
   if(!s || !e){ err.textContent = "開始・終了の日時を入力してください。"; return; }
   if(e <= s){ err.textContent = "終了は開始より後の時刻にしてください。"; return; }
@@ -735,13 +799,13 @@ function saveTask(){
   if(editingId){
     const t = state.tasks.find(x => x.id === editingId);
     Object.assign(t, {
-      memberId, title,
+      memberIds, title,
       start: toLocalStr(s), end: toLocalStr(e),
       color: draftColor, note: $("fNote").value.trim(), updatedAt: now,
     });
   }else{
     state.tasks.push({
-      id: uid(), memberId, title,
+      id: uid(), memberIds, title,
       start: toLocalStr(s), end: toLocalStr(e),
       color: draftColor, note: $("fNote").value.trim(),
       deleted: false, updatedAt: now,
@@ -755,7 +819,9 @@ function deleteTask(){
   if(!editingId) return;
   const t = state.tasks.find(x => x.id === editingId);
   if(!t) return;
-  if(!confirm(`「${t.title || "(無題)"}」を削除しますか？`)) return;
+  const n = t.memberIds.filter(id => liveMembers().some(m => m.id === id)).length;
+  const warn = n > 1 ? `\n担当者${n}名すべての予定から削除されます。` : "";
+  if(!confirm(`「${t.title || "(無題)"}」を削除しますか？${warn}`)) return;
   t.deleted = true;
   t.updatedAt = Date.now();
   closeTask();
@@ -976,6 +1042,16 @@ const HELP_HTML = `
   <li>上部の <strong>日／週／月</strong> で表示を切り替えます。日＝1時間単位、週＝1日単位、月＝1週間単位の目盛りです。</li>
   <li>行が担当者、バーがその人の作業です。<strong>バーをクリック</strong>で編集、<strong>空いている所をクリック</strong>でその時間帯に新規作成できます。</li>
   <li>同じ時間に重なる作業は自動的に段組みで表示されます。</li>
+</ul>
+
+<p><strong>複数人で行う作業</strong></p>
+<ul>
+  <li>作業の入力画面で<strong>担当者を複数選択</strong>できます。「全員」ボタンで一括選択、「解除」で全解除です。</li>
+  <li>複数人をアサインした作業は<strong>1件の作業として登録され、担当者全員の行に同じバーが表示されます</strong>。
+      バーには「3名」のように人数が付きます。</li>
+  <li>どの行のバーを開いても<strong>同じ1件を編集</strong>します。時間や内容を直すと担当者全員に反映され、
+      削除すると全員の予定から消えます。</li>
+  <li>特定の人だけ外したいときは、その作業を開いて<strong>その人のチェックを外す</strong>だけです。</li>
   <li><kbd>Esc</kbd> でダイアログを閉じます。</li>
 </ul>
 
@@ -1025,6 +1101,12 @@ function init(){
     openTask(null, first.id, base);
   });
 
+  $("pickAll").addEventListener("click", () => {
+    memberChecks().forEach(c => { c.checked = true; }); updatePickCount();
+  });
+  $("pickNone").addEventListener("click", () => {
+    memberChecks().forEach(c => { c.checked = false; }); updatePickCount();
+  });
   $("taskSave").addEventListener("click", saveTask);
   $("taskCancel").addEventListener("click", closeTask);
   $("taskDelete").addEventListener("click", deleteTask);
