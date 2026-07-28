@@ -1,0 +1,11 @@
+{
+  "name": "team-gantt",
+  "private": true,
+  "description": "チームスケジュール ガントチャート（gantt.html）のテスト環境。アプリ本体は単一HTMLで依存なし",
+  "scripts": {
+    "test": "node tests/run-all.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.0"
+  }
+}
