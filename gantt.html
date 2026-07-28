@@ -262,6 +262,7 @@
     <span class="dot" id="syncDot"></span>
     <span id="syncText">未接続（この端末に保存中）</span>
     <button class="btn" id="openBtn">共有ファイルを開く</button>
+    <button class="btn" id="newFileBtn">新規作成</button>
     <button class="btn" id="saveBtn">保存</button>
     <button class="btn" id="helpBtn" title="使い方">?</button>
   </div>
@@ -1108,6 +1109,42 @@ function addMemberFromInput(){
    ========================================================================= */
 const fsaSupported = typeof window.showOpenFilePicker === "function";
 
+/* --- 選んだ共有ファイルを覚えておく（次回起動時に選び直さなくて済むように） ---
+   ファイルハンドルは localStorage に入らないため IndexedDB を使う。
+   file:// で開いた場合など IndexedDB が使えない環境では、静かにあきらめる。 */
+const IDB_NAME = "teamGantt", IDB_STORE = "handles", IDB_KEY = "shared";
+function idbOpen(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(IDB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+    r.onsuccess = () => res(r.result);
+    r.onerror   = () => rej(r.error);
+  });
+}
+async function idbSet(v){
+  try{
+    const db = await idbOpen();
+    await new Promise((res, rej) => {
+      const t = db.transaction(IDB_STORE, "readwrite");
+      t.objectStore(IDB_STORE).put(v, IDB_KEY);
+      t.oncomplete = res; t.onerror = () => rej(t.error);
+    });
+  }catch(e){ /* 使えない環境では覚えないだけ */ }
+}
+async function idbGet(){
+  try{
+    const db = await idbOpen();
+    return await new Promise((res, rej) => {
+      const t = db.transaction(IDB_STORE, "readonly");
+      const q = t.objectStore(IDB_STORE).get(IDB_KEY);
+      q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+    });
+  }catch(e){ return null; }
+}
+
+/** 再接続待ちのファイル（前回使った共有ファイル。権限の確認待ち） */
+let pendingHandle = null;
+
 function setSync(kind, text){
   const dot = $("syncDot");
   dot.className = "dot" + (kind ? " " + kind : "");
@@ -1136,32 +1173,111 @@ let autoSaveTimer = null;
 function scheduleAutoSave(){
   if(!fileHandle) return;
   clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(() => { saveToFile(false); }, 1200);
+  /* 各PCで少しずらし、同じ瞬間に書き込みが重なるのを避ける */
+  autoSaveTimer = setTimeout(() => { saveToFile(false); }, 1000 + Math.random() * 600);
+}
+
+function fsaUnavailable(){
+  alert(
+    "このブラウザ／開き方では共有ファイルへの直接保存が使えません。\n\n" +
+    "・Microsoft Edge または Google Chrome で開いてください\n" +
+    "（うまくいかない場合は、gantt.html を共有フォルダに置いて開き直すか、" +
+    "社内のWebサーバー経由で開いてください）\n\n" +
+    "それまでは「?」ボタンの中の「JSONを書き出す／読み込む」でやり取りしてください。"
+  );
+}
+
+/** 共有ファイルに接続する（読み書き権限を確認してから同期を始める） */
+async function connectHandle(h, isNew){
+  try{
+    if(h.queryPermission){
+      let p = await h.queryPermission({ mode:"readwrite" });
+      if(p !== "granted" && h.requestPermission) p = await h.requestPermission({ mode:"readwrite" });
+      if(p !== "granted"){
+        pendingHandle = h;
+        setSync("err", "共有ファイルへのアクセスが許可されませんでした");
+        updateFileButtons();
+        return false;
+      }
+    }
+    fileHandle = h;
+    pendingHandle = null;
+    await idbSet(h);                 // 次回起動時に選び直さなくて済むように覚えておく
+    /* 既存ファイルを選んだ場合に中身を消さないよう、必ず先に読み込む
+       （新規作成した空ファイルなら何も読まれない） */
+    await readFromFile(true);
+    await saveToFile(true);          // 手元の内容も反映させる
+    startPolling();
+    updateFileButtons();
+    return true;
+  }catch(e){
+    setSync("err", "共有ファイルに接続できませんでした: " + (e && e.message ? e.message : e));
+    updateFileButtons();
+    return false;
+  }
 }
 
 async function pickFile(){
-  if(!fsaSupported){
-    alert(
-      "このブラウザ／開き方では共有ファイルへの直接保存が使えません。\n\n" +
-      "・Microsoft Edge または Google Chrome を使う\n" +
-      "・かつ http(s) 経由で開く（file:// で直接開くと使用不可）\n\n" +
-      "それまでは「?」ボタンの中の「JSONを書き出す／読み込む」でやり取りしてください。"
-    );
-    return;
-  }
+  /* 前回使ったファイルが残っていれば、選び直さずに再接続する */
+  if(pendingHandle){ await connectHandle(pendingHandle, false); return; }
+  if(!fsaSupported){ fsaUnavailable(); return; }
   try{
     const [h] = await window.showOpenFilePicker({
       types:[{ description:"スケジュールデータ", accept:{ "application/json":[".json"] } }],
       multiple:false,
     });
-    fileHandle = h;
-    await readFromFile(true);
-    await saveToFile(true);          // 手元の内容も反映させる
-    startPolling();
+    await connectHandle(h, false);
   }catch(e){
     if(e && e.name === "AbortError") return;
     setSync("err", "ファイルを開けませんでした: " + (e && e.message ? e.message : e));
   }
+}
+
+/** 共有フォルダに新しい team-schedule.json を作る（最初の1人がこれを使う） */
+async function createFile(){
+  if(typeof window.showSaveFilePicker !== "function"){ fsaUnavailable(); return; }
+  try{
+    const h = await window.showSaveFilePicker({
+      suggestedName:"team-schedule.json",
+      types:[{ description:"スケジュールデータ", accept:{ "application/json":[".json"] } }],
+    });
+    await connectHandle(h, true);
+  }catch(e){
+    if(e && e.name === "AbortError") return;
+    setSync("err", "ファイルを作成できませんでした: " + (e && e.message ? e.message : e));
+  }
+}
+
+/** 接続状態に応じてボタンの文言と表示を切り替える */
+function updateFileButtons(){
+  const open = $("openBtn"), neu = $("newFileBtn");
+  if(fileHandle){
+    open.textContent = "別の共有ファイルを開く";
+    neu.hidden = true;
+  }else if(pendingHandle){
+    open.textContent = `「${pendingHandle.name}」に再接続`;
+    neu.hidden = true;
+  }else{
+    open.textContent = "共有ファイルを開く";
+    neu.hidden = false;
+  }
+}
+
+/** 起動時：前回使った共有ファイルに自動でつなぎ直す */
+async function restoreHandle(){
+  const h = await idbGet();
+  if(!h) { updateFileButtons(); return; }
+  try{
+    const p = h.queryPermission ? await h.queryPermission({ mode:"readwrite" }) : "granted";
+    if(p === "granted"){
+      await connectHandle(h, false);          // そのまま同期再開
+    }else{
+      /* ブラウザの仕様で、再起動後は一度クリックしないと権限が戻らないことがある */
+      pendingHandle = h;
+      setSync("dirty", `前回の「${h.name}」に未接続（ボタンで再接続）`);
+      updateFileButtons();
+    }
+  }catch(e){ updateFileButtons(); }
 }
 
 async function readFromFile(force){
@@ -1177,7 +1293,31 @@ async function readFromFile(force){
   state = purge(mergeState(state, remote));
   saveLocal();
   render();
+
+  /* 2台が同時に保存すると、先に書いた側の内容が上書きで消えることがある。
+     読み込んだ結果、手元にしか無い（または手元の方が新しい）データがあれば
+     書き戻して、全員の内容が最終的に揃うようにする。 */
+  if(needsPush(state, remote)){
+    dirty = true;
+    refreshSyncLabel();
+    scheduleAutoSave();
+  }
   return true;
+}
+
+/** 共有ファイル(remote)に反映されていない内容が手元にあるか */
+function needsPush(merged, remote){
+  const rt = new Map(remote.tasks.map(t => [t.id, t]));
+  for(const t of merged.tasks){
+    const o = rt.get(t.id);
+    if(!o || o.updatedAt !== t.updatedAt || o.deleted !== t.deleted) return true;
+  }
+  const rm = new Map(remote.members.map(m => [m.id, m]));
+  for(const m of merged.members){
+    const o = rm.get(m.id);
+    if(!o || o.updatedAt !== m.updatedAt || o.deleted !== m.deleted) return true;
+  }
+  return false;
 }
 
 async function saveToFile(silent){
@@ -1198,13 +1338,25 @@ async function saveToFile(silent){
   }
 }
 
+let pollFails = 0;
 function startPolling(){
   clearInterval(pollTimer);
-  pollTimer = setInterval(async () => {
-    if(!fileHandle || document.hidden) return;
-    try{ await readFromFile(false); refreshSyncLabel(); }
-    catch(e){ /* 一時的な共有ドライブ切断などは無視して次回に任せる */ }
-  }, POLL_MS);
+  pollFails = 0;
+  pollTimer = setInterval(pollOnce, POLL_MS);
+}
+async function pollOnce(){
+  if(!fileHandle || document.hidden) return;
+  try{
+    await readFromFile(false);
+    /* 切断から復帰したら表示を元に戻す */
+    if(pollFails >= 2) refreshSyncLabel();
+    pollFails = 0;
+    refreshSyncLabel();
+  }catch(e){
+    /* 共有ドライブが一時的に切れることがある。数回続いたら知らせる */
+    pollFails++;
+    if(pollFails >= 2) setSync("err", "共有フォルダに接続できません（再接続待ち）");
+  }
 }
 
 /* 手動の書き出し／読み込み（file:// で開いた場合のフォールバック） */
@@ -1305,13 +1457,19 @@ const HELP_HTML = `
   <li><kbd>Esc</kbd> でダイアログを閉じます。</li>
 </ul>
 
-<p><strong>共有フォルダで複数人と使う</strong></p>
+<p><strong>共有フォルダでリアルタイムに同期する</strong></p>
 <ul>
-  <li>共有フォルダに <code>team-schedule.json</code> を置き、各PCで「共有ファイルを開く」から選びます。以降は<strong>自動で保存・約5秒ごとに再読み込み</strong>されます。</li>
-  <li>保存時は他の人の変更を読み直してから書き込むため、別々の作業を同時に編集しても消えにくくなっています（同じ作業を同時に編集した場合は<strong>後から保存した内容が残ります</strong>）。</li>
-  <li>この自動同期は <strong>Microsoft Edge / Google Chrome</strong> で、かつ <strong>http(s) 経由で開いた場合</strong>に使えます。
-      ブラウザの制限により、<code>file://</code>（HTMLをダブルクリックで直接開く）では使えません。</li>
-  <li><code>file://</code> で使う場合は、下の <strong>「JSONを書き出す／読み込む」</strong> で共有フォルダのファイルをやり取りしてください（読み込み時はマージされます）。</li>
+  <li><strong>最初の1人</strong>：「新規作成」を押し、共有フォルダを選んで <code>team-schedule.json</code> を作ります。</li>
+  <li><strong>他の全員</strong>：「共有ファイルを開く」を押し、共有フォルダのその <code>team-schedule.json</code> を選びます。</li>
+  <li>以降は<strong>自動で保存され、約5秒ごとに他の人の変更が反映</strong>されます。別の画面から戻ったときは即座に読み直します。</li>
+  <li>一度つなげば<strong>次回起動時は自動で同じファイルに再接続</strong>します。
+      ブラウザの仕様で許可が切れている場合は、ボタンが「◯◯に再接続」に変わるので1回押してください。</li>
+  <li>2台が同時に保存しても内容が消えないよう、<strong>読み込み後に手元だけにあるデータを自動で書き戻します</strong>。
+      3台が同時に入力しても数秒で全員の画面が揃います。</li>
+  <li>同じ作業を2人が同時に編集した場合のみ、<strong>後から保存した内容が残ります</strong>。</li>
+  <li>共有フォルダが一時的に切れると「共有フォルダに接続できません」と表示され、復旧すると自動で戻ります。</li>
+  <li>この機能は <strong>Microsoft Edge / Google Chrome</strong> が必要です。うまく動かない場合は、
+      下の <strong>「JSONを書き出す／読み込む」</strong> でファイルをやり取りしてください（読み込み時はマージされます）。</li>
 </ul>
 
 <p><strong>各自のPCで入力し、メールでやり取りする</strong></p>
@@ -1400,6 +1558,11 @@ function init(){
   $("newMember").addEventListener("keydown", e => { if(e.key === "Enter") addMemberFromInput(); });
 
   $("openBtn").addEventListener("click", pickFile);
+  $("newFileBtn").addEventListener("click", createFile);
+
+  /* 別の画面から戻ってきたら、5秒を待たずにすぐ読み直す */
+  document.addEventListener("visibilitychange", () => { if(!document.hidden) pollOnce(); });
+  window.addEventListener("focus", pollOnce);
   $("saveBtn").addEventListener("click", () => fileHandle ? saveToFile(false) : exportJson());
   $("helpBtn").addEventListener("click", () => { $("helpMask").hidden = false; });
   $("helpClose").addEventListener("click", () => { $("helpMask").hidden = true; });
@@ -1427,6 +1590,8 @@ function init(){
 
   render();
   refreshSyncLabel();
+  updateFileButtons();
+  restoreHandle();          // 前回つないだ共有ファイルに自動で復帰する
 }
 init();
 </script>
