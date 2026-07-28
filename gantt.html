@@ -138,6 +138,17 @@
     border-radius:3px; padding:1px 4px; flex:none;
   }
   .lanes{position:relative; flex:1; cursor:crosshair;}
+  /* 週・月表示では、クリックで下の階層へ掘り下げる */
+  .drill .lanes{cursor:zoom-in;}
+  /* 掘り下げた直後、どの人の行だったか分かるように光らせる */
+  .row.flash .name{animation:flashName 2.2s ease-out;}
+  .row.flash .lanes{animation:flashLane 2.2s ease-out;}
+  @keyframes flashName{
+    0%,55%{background:#ffe9a8;} 100%{background:var(--panel);}
+  }
+  @keyframes flashLane{
+    0%,55%{background:#fffaeb;} 100%{background:transparent;}
+  }
   .gridline{position:absolute; top:0; bottom:0; border-left:1px solid var(--line); pointer-events:none;}
   .gridline.major{border-left-color:var(--line-strong);}
   .gridline.holiday, .gridline.saturday{border-left:0; pointer-events:none;}
@@ -1420,6 +1431,7 @@ function render(){
   [...$("viewSeg").children].forEach(b => b.classList.toggle("on", b.dataset.view === ui.view));
 
   const board = $("board");
+  board.className = ui.view === "day" ? "" : "drill";   /* 週・月はカーソルを変える */
   const tlWidth = timelineWidth(ticks.length);
   board.innerHTML = "";
   board.style.width = (tlWidth + 150) + "px";
@@ -1500,7 +1512,8 @@ function render(){
 
     const rowEl = document.createElement("div");
     const isMe = row.id === ui.meId;
-    rowEl.className = "row" + (isMe ? " me" : "");
+    rowEl.className = "row" + (isMe ? " me" : "") + (row.id === flashMemberId ? " flash" : "");
+    rowEl.dataset.member = row.id;
     rowEl.style.height = (laneCount * 26 + 8) + "px";
 
     const nameEl = document.createElement("div");
@@ -1512,6 +1525,9 @@ function render(){
 
     const lanes = document.createElement("div");
     lanes.className = "lanes";
+    lanes.title = ui.view === "day"  ? "クリックでこの時間帯に作業を追加"
+                : ui.view === "week" ? "クリックでこの日の日表示へ"
+                :                      "ダブルクリックでこの週の週表示へ";
 
     /* 全体予定の期間を背景に敷く（誰が抜けるか個人の予定と重ねて見えるように） */
     paintEventBands(lanes, ev.placed, pct);
@@ -1565,13 +1581,24 @@ function render(){
       lanes.appendChild(bar);
     }
 
-    /* 空き部分クリックで、その時間帯に新規作成 */
+    /* クリックしたマスの日時を求める */
+    const posOf = ev => {
+      const rect = lanes.getBoundingClientRect();
+      const ratio = Math.min(Math.max((ev.clientX - rect.left) / rect.width, 0), 1);
+      return new Date(rs + ratio * span);
+    };
+
     if(row.id !== "__none__"){
-      lanes.addEventListener("click", ev => {
-        const rect = lanes.getBoundingClientRect();
-        const ratio = Math.min(Math.max((ev.clientX - rect.left) / rect.width, 0), 1);
-        openTask(null, row.id, new Date(rs + ratio * span));
-      });
+      if(ui.view === "day"){
+        /* 日表示：空き部分クリックで、その時間帯に新規作成 */
+        lanes.addEventListener("click", ev => openTask(null, row.id, posOf(ev)));
+      }else if(ui.view === "week"){
+        /* 週表示：日のマスをクリックで、その日の日表示へ */
+        lanes.addEventListener("click", ev => drillDown("day", posOf(ev), row.id));
+      }else{
+        /* 月表示：週のマスをダブルクリックで、その週の週表示へ */
+        lanes.addEventListener("dblclick", ev => drillDown("week", posOf(ev), row.id));
+      }
     }
 
     rowEl.appendChild(lanes);
@@ -3290,6 +3317,34 @@ function importJson(file){
 /* =========================================================================
    ナビゲーション
    ========================================================================= */
+/** ドリルダウンした直後に、クリックした人の行を少しの間だけ光らせる */
+let flashMemberId = null;
+let flashTimer = null;
+
+/**
+ * 月 → 週 → 日 と表示を掘り下げる。
+ * clickedAt はクリックしたマスの日時、memberId はその行の人。
+ */
+function drillDown(view, clickedAt, memberId){
+  ui.view = view;
+  ui.anchor = toLocalStr(startOfDay(clickedAt));
+  scrollPending = true;
+  saveLocal();
+
+  /* どの人の行を見ていたのか分かるように、少しの間だけ強調する */
+  flashMemberId = memberId || null;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { flashMemberId = null; render(); }, 2200);
+
+  render();
+
+  /* 相手の行が画面外なら見える位置まで動かす */
+  if(memberId){
+    const el = $("board").querySelector(`.row[data-member="${CSS.escape(memberId)}"]`);
+    if(el && el.scrollIntoView) el.scrollIntoView({ block:"nearest" });
+  }
+}
+
 function move(dir){
   const a = parseLocal(ui.anchor) || new Date();
   let next;
@@ -3308,7 +3363,13 @@ const HELP_HTML = `
 <p><strong>基本操作</strong></p>
 <ul>
   <li>上部の <strong>日／週／月</strong> で表示を切り替えます。日＝1時間単位、週＝1日単位、月＝1週間単位の目盛りです。</li>
-  <li>行が担当者、バーがその人の作業です。<strong>バーをクリック</strong>で編集、<strong>空いている所をクリック</strong>でその時間帯に新規作成できます。</li>
+  <li>行が担当者、バーがその人の作業です。<strong>バーをクリック</strong>で編集できます。</li>
+  <li><strong>月 → 週 → 日 と掘り下げられます。</strong>
+      月表示でその人の週のマスを<strong>ダブルクリック</strong>すると、その週の週表示へ。
+      週表示でその人の日のマスを<strong>クリック</strong>すると、その日の日表示へ移動します。
+      移動した直後は、どの人の行だったか分かるように少しの間だけ光ります。</li>
+  <li>日表示では、<strong>空いている所をクリック</strong>するとその時間帯に新規作成できます
+      （週・月表示ではクリックが掘り下げになるため、追加は「＋ 新規作業」から行ってください）。</li>
   <li>同じ時間に重なる作業は自動的に段組みで表示されます。</li>
   <li>時間軸の目盛りは、上段が <strong>${TZ_LETTER} TIME（このPCの時刻）</strong>、下段が小さく <strong>Z TIME（UTC）</strong> です。
       作業の入力画面でも、開始・終了の下に Z TIME を表示します（週/月表示や入力欄は <code>日日時時分分Z</code> の形式）。</li>
