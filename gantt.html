@@ -37,6 +37,8 @@
     padding:8px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   }
   header h1{font-size:16px; margin:0 8px 0 0; white-space:nowrap;}
+  /* display を指定した要素にも hidden を効かせる */
+  [hidden]{display:none !important;}
   .seg{display:flex; border:1px solid var(--line-strong); border-radius:6px; overflow:hidden;}
   .seg button{border:0; background:var(--panel); padding:6px 14px;}
   .seg button+button{border-left:1px solid var(--line-strong);}
@@ -189,6 +191,70 @@
   }
   .field textarea{resize:vertical; min-height:60px;}
   .zhint{font-size:11px; color:#9aa1ad; margin-top:4px; min-height:14px;}
+  /* ---------- 資格画面 ---------- */
+  #certScreen{flex:1; overflow:auto; background:var(--panel); padding:14px 16px 30px;}
+  #certScreen[hidden]{display:none;}
+  .certwrap{overflow-x:auto;}
+  #certTable{border-collapse:separate; border-spacing:0; font-size:13px; min-width:100%;}
+  #certTable th, #certTable td{border-bottom:1px solid var(--line); padding:0;}
+  #certTable thead th{
+    position:sticky; top:0; z-index:5; background:var(--panel);
+    border-bottom:2px solid var(--line-strong); padding:8px 10px;
+    text-align:left; font-size:12px; white-space:nowrap; vertical-align:bottom;
+  }
+  #certTable thead th.mem{position:sticky; left:0; z-index:6; width:172px; min-width:172px;}
+  #certTable tbody th{
+    position:sticky; left:0; z-index:4; background:var(--panel);
+    border-right:1px solid var(--line-strong); text-align:left;
+    padding:6px 10px; font-weight:600; white-space:nowrap;
+  }
+  #certTable tbody tr.me th{background:#eef3ff; box-shadow:inset 3px 0 0 var(--accent);}
+  #certTable tbody tr:hover td{background:#f7f9fc;}
+  .thname{display:flex; align-items:center; gap:6px;}
+  .thname .tname{cursor:pointer; text-decoration:underline dotted;}
+  .thname .tname:hover{color:var(--accent);}
+  .thname button{
+    border:1px solid var(--line-strong); background:#fff; border-radius:4px;
+    font-size:10px; padding:1px 5px; color:var(--muted);
+  }
+  .thcount{display:block; font-weight:400; font-size:11px; color:var(--muted); margin-top:3px;}
+  .thcount.alone{color:var(--danger); font-weight:600;}
+  .cell{
+    display:block; width:100%; min-width:140px; text-align:left; border:0;
+    background:transparent; padding:7px 10px; cursor:pointer; font:inherit;
+    border-left:4px solid transparent;
+  }
+  .cell .d{font-weight:600;}
+  .cell .r{display:block; font-size:11px; margin-top:2px;}
+  .cell.none{color:#b9bec7;}
+  .cell.ok     {border-left-color:#2fa84f; background:#f4fbf6;}
+  .cell.warn   {border-left-color:#e8a33d; background:#fdf8ef;}
+  .cell.soon   {border-left-color:#f07c1f; background:#fdf2e8;}
+  .cell.expired{border-left-color:var(--danger); background:#fdf0ef;}
+  .cell.ok .r     {color:#2fa84f;}
+  .cell.warn .r   {color:#b5761c;}
+  .cell.soon .r   {color:#c25c05;}
+  .cell.expired .r{color:var(--danger); font-weight:600;}
+
+  #certWarn{margin-bottom:14px;}
+  #certWarn:empty{display:none;}
+  .cwarn{
+    border:1px solid #f0d3a0; background:#fdf8ef; border-radius:8px;
+    padding:10px 14px; margin-bottom:8px; font-size:13px; line-height:1.6;
+  }
+  .cwarn.bad{border-color:#f0b6b2; background:#fdf0ef;}
+  .cwarn b{display:block; margin-bottom:2px;}
+  .cwarn .why{color:var(--muted); font-size:12px;}
+
+  #certBanner{
+    flex:none; background:#fdf0ef; border-bottom:1px solid #f0b6b2;
+    padding:9px 16px; font-size:13px; display:flex; align-items:center; gap:12px;
+  }
+  #certBanner[hidden]{display:none;}
+  #certBanner.soft{background:#fdf8ef; border-bottom-color:#f0d3a0;}
+  #certBanner .mine{font-weight:600;}
+  #certBanner .rest{color:var(--muted); font-size:12px;}
+
   /* ---------- 設定ダイアログ ---------- */
   .setblock{
     background:#f7f9fc; border:1px solid var(--line); border-radius:8px;
@@ -264,8 +330,10 @@
   <span class="range-label" id="rangeLabel"></span>
 
   <button class="btn primary" id="addBtn">＋ 新規作業</button>
+  <button class="btn" id="addTypeBtn" hidden>＋ 資格の種類</button>
   <button class="btn" id="memberBtn">メンバー</button>
   <button class="btn" id="listBtn" hidden>作業一覧</button>
+  <button class="btn" id="certBtn">🎓 資格</button>
 
   <span class="spacer"></span>
 
@@ -278,8 +346,19 @@
   </div>
 </header>
 
+<!-- 期限が近い資格のお知らせ（自分の分を先頭に出す） -->
+<div id="certBanner" hidden></div>
+
 <div id="scroller">
   <div id="board"></div>
+</div>
+
+<!-- ===== 資格画面 ===== -->
+<div id="certScreen" hidden>
+  <div id="certWarn"></div>
+  <div class="certwrap">
+    <table id="certTable"></table>
+  </div>
 </div>
 
 <!-- 週表示のときだけ出す、その日の作業の文字一覧 -->
@@ -361,6 +440,42 @@
     <div class="foot">
       <span class="spacer"></span>
       <button class="btn primary" id="memberClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== certificate modal ===== -->
+<div class="mask" id="certMask" hidden>
+  <div class="modal">
+    <h2 id="certTitle">資格の有効期限</h2>
+    <div class="body">
+      <div class="setnow" id="certWho"></div>
+
+      <div class="field">
+        <label for="cExpiry">有効期限（直接入力）</label>
+        <input id="cExpiry" type="date">
+        <div class="zhint" id="cLeft"></div>
+      </div>
+
+      <div class="setblock">
+        <div class="setlabel">更新したとき</div>
+        <div class="setrow">
+          <button class="btn primary" id="cRenew">更新した（期限を1年延長）</button>
+        </div>
+        <p class="note" id="cRenewNote"></p>
+      </div>
+
+      <div class="field">
+        <label for="cNote">メモ（任意）</label>
+        <textarea id="cNote" rows="2"></textarea>
+      </div>
+      <p class="err" id="certErr"></p>
+    </div>
+    <div class="foot">
+      <button class="btn danger" id="cDelete">この資格を外す</button>
+      <span class="spacer"></span>
+      <button class="btn" id="cCancel">キャンセル</button>
+      <button class="btn primary" id="cSave">保存</button>
     </div>
   </div>
 </div>
@@ -481,6 +596,30 @@ const zHM  = d => `${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}Z`;
 /** UTC の日付＋時刻（DTG 形式、例 "261500Z"） */
 const zDTG = d => `${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}Z`;
 
+/* --- 日付のみ（資格の有効期限。"YYYY-MM-DD"） --- */
+function parseDate(s){
+  if(typeof s !== "string") return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return null;
+  const d = new Date(+m[1], +m[2]-1, +m[3]);
+  return (d.getFullYear() === +m[1] && d.getMonth() === +m[2]-1 && d.getDate() === +m[3]) ? d : null;
+}
+const toDateStr = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+/** 有効期限まであと何日か（当日は0、過ぎていればマイナス） */
+function daysUntil(dateStr){
+  const d = parseDate(dateStr);
+  if(!d) return null;
+  return Math.round((d - startOfDay(new Date())) / DAY_MS);
+}
+/** 1年後の同じ日（2/29は2/28に寄せる） */
+function plusOneYear(dateStr){
+  const d = parseDate(dateStr);
+  if(!d) return null;
+  const y = d.getFullYear() + 1, m = d.getMonth(), day = d.getDate();
+  const last = new Date(y, m + 1, 0).getDate();
+  return toDateStr(new Date(y, m, Math.min(day, last)));
+}
+
 const WD = ["日","月","火","水","木","金","土"];
 const fmtHM   = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const fmtMD   = d => `${d.getMonth()+1}/${d.getDate()}`;
@@ -489,10 +628,10 @@ const fmtYMD  = d => `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate(
 /* =========================================================================
    状態
    ========================================================================= */
-let state = { version:1, members:[], tasks:[] };
+let state = { version:1, members:[], tasks:[], certTypes:[], certs:[] };
 /* ui はこのPC専用の設定。書き出すJSONには含めない（meId＝このPCで入力する人） */
 let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())), showList:true, meId:"",
-           fileName:"team-schedule.json" };
+           fileName:"team-schedule.json", screen:"gantt" };
 let dirty = false;              // ファイルに未保存の変更があるか
 let fileHandle = null;          // File System Access API のハンドル
 let lastFileModified = 0;       // 直近に読み込んだファイルの更新時刻
@@ -508,8 +647,37 @@ const $ = id => document.getElementById(id);
    データ正規化 / マージ
    ========================================================================= */
 function normalize(raw){
-  const out = { version:1, members:[], tasks:[] };
+  const out = { version:1, members:[], tasks:[], certTypes:[], certs:[] };
   if(!raw || typeof raw !== "object") return out;
+
+  /* 資格の種類（年1回更新の資格を数種類ぶん登録する） */
+  if(Array.isArray(raw.certTypes)){
+    out.certTypes = raw.certTypes
+      .filter(t => t && typeof t.id === "string")
+      .map((t,i) => ({
+        id: t.id,
+        name: typeof t.name === "string" ? t.name : "名称未設定",
+        order: Number.isFinite(t.order) ? t.order : i,
+        deleted: !!t.deleted,
+        updatedAt: Number.isFinite(t.updatedAt) ? t.updatedAt : 0,
+      }));
+  }
+  /* 誰がどの資格をいつまで持っているか */
+  if(Array.isArray(raw.certs)){
+    out.certs = raw.certs
+      .filter(c => c && typeof c.id === "string")
+      .map(c => ({
+        id: c.id,
+        memberId: typeof c.memberId === "string" ? c.memberId : "",
+        typeId: typeof c.typeId === "string" ? c.typeId : "",
+        expiry: parseDate(c.expiry) ? c.expiry : null,
+        lastRenewed: parseDate(c.lastRenewed) ? c.lastRenewed : null,
+        note: typeof c.note === "string" ? c.note : "",
+        deleted: !!c.deleted,
+        updatedAt: Number.isFinite(c.updatedAt) ? c.updatedAt : 0,
+      }))
+      .filter(c => c.deleted || (c.memberId && c.typeId && c.expiry));
+  }
 
   if(Array.isArray(raw.members)){
     out.members = raw.members
@@ -557,21 +725,53 @@ function mergeLists(a, b){
 function mergeState(local, remote){
   return {
     version: 1,
-    members: mergeLists(local.members, remote.members),
-    tasks:   mergeLists(local.tasks,   remote.tasks),
+    members:   mergeLists(local.members || [],   remote.members || []),
+    tasks:     mergeLists(local.tasks || [],     remote.tasks || []),
+    certTypes: mergeLists(local.certTypes || [], remote.certTypes || []),
+    certs:     mergeLists(local.certs || [],     remote.certs || []),
   };
 }
 /** 古い tombstone を掃除（ファイルの肥大化防止） */
 function purge(s){
   const limit = Date.now() - TOMBSTONE_KEEP_MS;
-  s.members = s.members.filter(m => !m.deleted || m.updatedAt > limit);
-  s.tasks   = s.tasks.filter(t => !t.deleted || t.updatedAt > limit);
+  const keep = list => (list || []).filter(x => !x.deleted || x.updatedAt > limit);
+  s.members   = keep(s.members);
+  s.tasks     = keep(s.tasks);
+  s.certTypes = keep(s.certTypes);
+  s.certs     = keep(s.certs);
   return s;
 }
 
 const liveMembers = () =>
-  state.members.filter(m => !m.deleted).sort((a,b) => a.order - b.order || a.name.localeCompare(b.name,"ja"));
-const liveTasks = () => state.tasks.filter(t => !t.deleted);
+  (state.members || []).filter(m => !m.deleted).sort((a,b) => a.order - b.order || a.name.localeCompare(b.name,"ja"));
+const liveTasks = () => (state.tasks || []).filter(t => !t.deleted);
+/* 資格を持たない古いデータを渡されても動くようにする */
+const liveCertTypes = () =>
+  (state.certTypes || []).filter(t => !t.deleted)
+    .sort((a,b) => a.order - b.order || a.name.localeCompare(b.name,"ja"));
+const liveCerts = () => (state.certs || []).filter(c => !c.deleted);
+/** 特定の人の特定の資格（無ければ undefined） */
+const certOf = (memberId, typeId) =>
+  liveCerts().find(c => c.memberId === memberId && c.typeId === typeId);
+
+/* 期限までの日数で区分する。相互補完の判断もこの区分を使う */
+const CERT_WARN = 60, CERT_SOON = 30;
+function certStatus(cert){
+  if(!cert) return { key:"none", label:"未保有", days:null };
+  const d = daysUntil(cert.expiry);
+  if(d === null)   return { key:"none", label:"未保有", days:null };
+  if(d < 0)        return { key:"expired", label:`${-d}日超過`, days:d };
+  if(d <= CERT_SOON) return { key:"soon", label:`残り${d}日`, days:d };
+  if(d <= CERT_WARN) return { key:"warn", label:`残り${d}日`, days:d };
+  return { key:"ok", label:`残り${d}日`, days:d };
+}
+/** その資格を今日時点で有効に保有している人 */
+function validHolders(typeId){
+  return liveMembers().filter(m => {
+    const c = certOf(m.id, typeId);
+    return c && daysUntil(c.expiry) >= 0;
+  });
+}
 
 /* =========================================================================
    ローカル保存（常に効かせる安全網）
@@ -594,6 +794,7 @@ function loadLocal(){
       if(typeof u.showList === "boolean") ui.showList = u.showList;
       if(typeof u.meId === "string") ui.meId = u.meId;
       if(typeof u.fileName === "string" && u.fileName.trim()) ui.fileName = u.fileName.trim();
+      if(u.screen === "certs" || u.screen === "gantt") ui.screen = u.screen;
     }
   }catch(e){}
 }
@@ -674,6 +875,24 @@ function timelineWidth(tickCount){
    描画
    ========================================================================= */
 function render(){
+  renderCertBanner();
+
+  /* 資格画面とスケジュール画面の切り替え */
+  const onCerts = ui.screen === "certs";
+  $("certScreen").hidden = !onCerts;
+  $("scroller").hidden = onCerts;
+  $("daylist").hidden = onCerts || $("daylist").hidden;
+  ["viewSeg","prevBtn","todayBtn","nextBtn","rangeLabel","addBtn"].forEach(id => { $(id).hidden = onCerts; });
+  $("addTypeBtn").hidden = !onCerts;
+  $("certBtn").textContent = onCerts ? "🗓 スケジュール" : "🎓 資格";
+  $("certBtn").classList.toggle("primary", onCerts);
+  if(onCerts){
+    $("listBtn").hidden = true;
+    document.body.classList.remove("has-list");
+    renderCertScreen();
+    return;
+  }
+
   const range = currentRange();
   const rs = range.start.getTime(), re = range.end.getTime();
   const span = re - rs;
@@ -929,6 +1148,296 @@ function renderDayList(range){
     col.appendChild(ul);
     grid.appendChild(col);
   }
+}
+
+/* =========================================================================
+   資格の管理（メンバー × 資格の種類のマトリクス）
+   ========================================================================= */
+function renderCertScreen(){
+  const table = $("certTable");
+  const members = liveMembers(), types = liveCertTypes();
+  table.innerHTML = "";
+
+  if(!types.length){
+    table.innerHTML = `<tbody><tr><td style="padding:30px;color:var(--muted);border:0;">
+      「＋ 資格の種類」から、管理したい資格を追加してください。</td></tr></tbody>`;
+    renderCertWarnings();
+    return;
+  }
+
+  /* 見出し：資格の種類と、有効な保有者数 */
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  hr.innerHTML = `<th class="mem">メンバー</th>`;
+  for(const t of types){
+    const th = document.createElement("th");
+    const holders = validHolders(t.id).length;
+    const name = document.createElement("div");
+    name.className = "thname";
+    /* 資格名をクリックすると、今日この資格で動ける人が分かる */
+    const label = document.createElement("span");
+    label.className = "tname";
+    label.textContent = t.name;
+    label.title = "クリックで、今日この資格で動ける人を表示";
+    label.addEventListener("click", () => {
+      const hs = validHolders(t.id);
+      alert(`「${t.name}」で今日動ける人（${hs.length}名）\n\n`
+        + (hs.length
+            ? hs.map(m => `・${m.name}（${certOf(m.id, t.id).expiry} まで）`).join("\n")
+            : "有効な保有者がいません。"));
+    });
+    name.appendChild(label);
+    const ren = document.createElement("button"); ren.textContent = "名称";
+    ren.title = "この資格の名称を変更";
+    ren.addEventListener("click", () => renameCertType(t));
+    const del = document.createElement("button"); del.textContent = "削除";
+    del.title = "この資格の種類を削除";
+    del.addEventListener("click", () => deleteCertType(t));
+    name.append(ren, del);
+    th.appendChild(name);
+    th.insertAdjacentHTML("beforeend",
+      `<span class="thcount${holders <= 1 ? " alone" : ""}">有効な保有者 ${holders}名`
+      + `${holders <= 1 ? " ⚠" : ""}</span>`);
+    hr.appendChild(th);
+  }
+  thead.appendChild(hr);
+  table.appendChild(thead);
+
+  /* 本体：各メンバーの期限 */
+  const tbody = document.createElement("tbody");
+  for(const m of members){
+    const tr = document.createElement("tr");
+    if(m.id === ui.meId) tr.className = "me";
+    const th = document.createElement("th");
+    th.textContent = m.name + (m.id === ui.meId ? "（あなた）" : "");
+    tr.appendChild(th);
+
+    for(const t of types){
+      const td = document.createElement("td");
+      const c = certOf(m.id, t.id);
+      const st = certStatus(c);
+      const btn = document.createElement("button");
+      btn.className = "cell " + st.key;
+      btn.innerHTML = c
+        ? `<span class="d">${esc(c.expiry)}</span><span class="r">${st.label}</span>`
+        : `<span class="d">－</span><span class="r">クリックで登録</span>`;
+      btn.title = `${m.name}／${t.name}`;
+      btn.addEventListener("click", () => openCert(m.id, t.id));
+      td.appendChild(btn);
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  renderCertWarnings();
+}
+
+/** 相互補完のための警告（属人化と期限の集中） */
+function certWarnings(){
+  const out = { alone:[], expired:[], cluster:[] };
+  for(const t of liveCertTypes()){
+    const holders = validHolders(t.id);
+    const all = liveMembers().filter(m => certOf(m.id, t.id));
+    if(holders.length <= 1){
+      out.alone.push({ type:t, holders, total:all.length });
+    }
+    /* 同じ年月に2名以上の期限が重なると、まとめて動けなくなる */
+    const byMonth = new Map();
+    for(const m of holders){
+      const c = certOf(m.id, t.id);
+      const key = c.expiry.slice(0,7);
+      if(!byMonth.has(key)) byMonth.set(key, []);
+      byMonth.get(key).push(m.name);
+    }
+    /* その月を過ぎると残りが1名以下になるなら、補完が効かなくなる */
+    for(const [ym, names] of byMonth){
+      const left = holders.length - names.length;
+      if(names.length >= 2 && left <= 1) out.cluster.push({ type:t, ym, names, left });
+    }
+  }
+  for(const c of liveCerts()){
+    if(daysUntil(c.expiry) < 0){
+      const m = liveMembers().find(x => x.id === c.memberId);
+      const t = liveCertTypes().find(x => x.id === c.typeId);
+      if(m && t) out.expired.push({ member:m, type:t, cert:c });
+    }
+  }
+  return out;
+}
+
+function renderCertWarnings(){
+  const box = $("certWarn");
+  box.innerHTML = "";
+  const w = certWarnings();
+
+  for(const e of w.expired){
+    box.insertAdjacentHTML("beforeend",
+      `<div class="cwarn bad"><b>期限切れ：${esc(e.member.name)}／${esc(e.type.name)}</b>`
+      + `<span class="why">${esc(e.cert.expiry)} に期限が切れています（${-daysUntil(e.cert.expiry)}日超過）。</span></div>`);
+  }
+  for(const a of w.alone){
+    const who = a.holders.length ? `現在は ${a.holders.map(m => esc(m.name)).join("、")} のみ` : "有効な保有者がいません";
+    box.insertAdjacentHTML("beforeend",
+      `<div class="cwarn${a.holders.length ? "" : " bad"}"><b>⚠ ${esc(a.type.name)}：${who}</b>`
+      + `<span class="why">この人が期限切れ・不在になると誰も対応できません。`
+      + `もう1名の取得をご検討ください（相互補完）。</span></div>`);
+  }
+  for(const c of w.cluster){
+    const [y, mo] = c.ym.split("-");
+    box.insertAdjacentHTML("beforeend",
+      `<div class="cwarn"><b>⚠ ${esc(c.type.name)}：${+y}年${+mo}月に ${c.names.length}名まとめて期限切れ</b>`
+      + `<span class="why">${c.names.map(esc).join("、")}。`
+      + `この月を過ぎると有効な保有者は${c.left}名になります。`
+      + `更新時期をずらすことをご検討ください。</span></div>`);
+  }
+}
+
+/** 画面上部のお知らせ（自分の期限を優先して伝える） */
+function renderCertBanner(){
+  const el = $("certBanner");
+  const list = liveCerts()
+    .map(c => ({ c, d:daysUntil(c.expiry) }))
+    .filter(x => x.d !== null && x.d <= CERT_SOON)
+    .sort((a,b) => a.d - b.d);
+  if(!list.length){ el.hidden = true; return; }
+
+  const nameOf = id => (liveMembers().find(m => m.id === id) || {}).name || "";
+  const typeOf = id => (liveCertTypes().find(t => t.id === id) || {}).name || "";
+  const mine = ui.meId ? list.filter(x => x.c.memberId === ui.meId) : [];
+  const others = list.filter(x => !mine.includes(x));
+
+  const say = x => x.d < 0
+    ? `${typeOf(x.c.typeId)} は期限切れです（${x.c.expiry}）`
+    : `${typeOf(x.c.typeId)} は残り${x.d}日です（${x.c.expiry}まで）`;
+
+  let html = "";
+  if(mine.length){
+    html += `<span class="mine">⚠ あなたの ${esc(say(mine[0]))}`
+         + (mine.length > 1 ? `　ほか${mine.length - 1}件` : "") + `</span>`;
+  }
+  if(others.length){
+    const o = others[0];
+    html += `<span class="rest">${mine.length ? "／" : "⚠ "}`
+         + `${esc(nameOf(o.c.memberId))}の ${esc(say(o))}`
+         + (others.length > 1 ? `　ほか${others.length - 1}件` : "") + `</span>`;
+  }
+  html += `<span class="spacer" style="flex:1"></span>`
+       + `<button class="btn" id="bannerOpen">資格を見る</button>`;
+  el.innerHTML = html;
+  el.className = list.some(x => x.d < 0) ? "" : "soft";
+  el.hidden = false;
+  $("bannerOpen").addEventListener("click", () => { ui.screen = "certs"; saveLocal(); render(); });
+}
+
+function addCertType(){
+  const name = prompt("追加する資格の名称を入力してください（例：フォークリフト）");
+  if(name === null) return;
+  const v = name.trim();
+  if(!v) return;
+  state.certTypes.push({
+    id: uid(), name: v, order: liveCertTypes().length, deleted: false, updatedAt: Date.now(),
+  });
+  changed();
+}
+function renameCertType(t){
+  const name = prompt("資格の名称", t.name);
+  if(name === null) return;
+  const v = name.trim();
+  if(!v) return;
+  t.name = v; t.updatedAt = Date.now();
+  changed();
+}
+function deleteCertType(t){
+  const n = liveCerts().filter(c => c.typeId === t.id).length;
+  if(!confirm(`「${t.name}」を削除しますか？`
+    + (n ? `\n登録済みの期限 ${n}件も一緒に削除されます。` : ""))) return;
+  const now = Date.now();
+  t.deleted = true; t.updatedAt = now;
+  liveCerts().filter(c => c.typeId === t.id).forEach(c => { c.deleted = true; c.updatedAt = now; });
+  changed();
+}
+
+/* --- 資格ダイアログ（期限の直接入力と「更新した」の2通り） --- */
+let editingCert = null;      // { memberId, typeId }
+function openCert(memberId, typeId){
+  const m = liveMembers().find(x => x.id === memberId);
+  const t = liveCertTypes().find(x => x.id === typeId);
+  if(!m || !t) return;
+  editingCert = { memberId, typeId };
+  const c = certOf(memberId, typeId);
+
+  $("certTitle").textContent = c ? "資格の有効期限" : "資格を登録";
+  $("certWho").innerHTML = `<strong>${esc(m.name)}</strong>　／　${esc(t.name)}`
+    + (c && c.lastRenewed ? `<span class="sub">前回の更新：${esc(c.lastRenewed)}</span>` : "");
+  $("cExpiry").value = c ? c.expiry : "";
+  $("cNote").value = c ? c.note : "";
+  $("cDelete").hidden = !c;
+  $("certErr").textContent = "";
+  updateCertHint();
+  $("certMask").hidden = false;
+  $("cExpiry").focus();
+}
+/** 入力中の期限から、残り日数と「更新した」を押した結果を出す */
+function updateCertHint(){
+  const v = $("cExpiry").value;
+  const d = daysUntil(v);
+  $("cLeft").textContent = d === null ? ""
+    : d < 0 ? `${-d}日超過しています` : `残り ${d}日`;
+
+  const next = nextExpiry(v);
+  $("cRenewNote").textContent = v
+    ? `押すと有効期限が ${next} になります（今の期限の1年後）。`
+    : `期限が未入力のときは、今日から1年後（${nextExpiry("")}）になります。`;
+}
+/** 「更新した」を押したときの新しい期限 */
+function nextExpiry(current){
+  const today = toDateStr(startOfDay(new Date()));
+  /* 期限切れ後に更新した場合は、今日から1年後にする */
+  if(!current || daysUntil(current) < 0) return plusOneYear(today);
+  return plusOneYear(current);
+}
+function saveCert(){
+  if(!editingCert) return;
+  const v = $("cExpiry").value;
+  if(!parseDate(v)){ $("certErr").textContent = "有効期限を入力してください。"; return; }
+  writeCert(v, null);
+}
+function renewCert(){
+  if(!editingCert) return;
+  const next = nextExpiry($("cExpiry").value);
+  writeCert(next, toDateStr(startOfDay(new Date())));
+}
+function writeCert(expiry, renewedOn){
+  const { memberId, typeId } = editingCert;
+  const now = Date.now();
+  const c = certOf(memberId, typeId);
+  if(c){
+    c.expiry = expiry;
+    if(renewedOn) c.lastRenewed = renewedOn;
+    c.note = $("cNote").value.trim();
+    c.updatedAt = now;
+  }else{
+    state.certs.push({
+      id: uid(), memberId, typeId, expiry,
+      lastRenewed: renewedOn, note: $("cNote").value.trim(),
+      deleted: false, updatedAt: now,
+    });
+  }
+  $("certMask").hidden = true;
+  editingCert = null;
+  changed();
+}
+function deleteCert(){
+  if(!editingCert) return;
+  const c = certOf(editingCert.memberId, editingCert.typeId);
+  if(!c) return;
+  const m = liveMembers().find(x => x.id === c.memberId);
+  const t = liveCertTypes().find(x => x.id === c.typeId);
+  if(!confirm(`${m ? m.name : ""} の「${t ? t.name : ""}」を外しますか？`)) return;
+  c.deleted = true; c.updatedAt = Date.now();
+  $("certMask").hidden = true;
+  editingCert = null;
+  changed();
 }
 
 function esc(s){
@@ -1598,6 +2107,31 @@ const HELP_HTML = `
   <li><kbd>Esc</kbd> でダイアログを閉じます。</li>
 </ul>
 
+<p><strong>資格の期限を管理する（🎓 資格）</strong></p>
+<ul>
+  <li>「🎓 資格」ボタンで資格画面に切り替わります。<strong>縦がメンバー、横が資格の種類</strong>のマトリクスです。</li>
+  <li>まず「＋ 資格の種類」で、管理したい資格（例：フォークリフト、玉掛け）を登録します。</li>
+  <li>セルをクリックすると期限を登録・編集できます。登録方法は2通りです。
+    <ul>
+      <li><strong>有効期限を直接入力</strong>（日付を選ぶ）</li>
+      <li><strong>「更新した（期限を1年延長）」ボタン</strong>：年1回更新なので、押すだけで1年後になります。
+          期限切れ後に押した場合は、今日から1年後になります。更新した日も記録されます。</li>
+    </ul>
+  </li>
+  <li>色分けは <strong>緑＝有効／黄＝60日以内／橙＝30日以内／赤＝期限切れ／グレー＝未保有</strong>です。</li>
+  <li>画面上部に<strong>お知らせバナー</strong>が出ます。「このPCで入力する人」を設定していれば、
+      自分の期限が先頭に表示されます。</li>
+</ul>
+
+<p><strong>相互補完のための警告</strong></p>
+<ul>
+  <li><strong>属人化</strong>：有効な保有者が1名以下の資格を警告します。その人が期限切れ・不在になると誰も対応できません。</li>
+  <li><strong>期限の集中</strong>：同じ月に複数名の期限が重なり、その月を過ぎると保有者が1名以下になる場合に警告します。
+      年1回更新は放っておくと時期が固まりがちなので、更新時期をずらす判断に使えます。</li>
+  <li><strong>資格名をクリック</strong>すると、今日その資格で動ける人が一覧で出ます。</li>
+  <li>資格データもスケジュールと同じように<strong>全員に自動同期</strong>されます。</li>
+</ul>
+
 <p><strong>共有フォルダでリアルタイムに同期する</strong></p>
 <ul>
   <li><strong>全員が「⚙ 設定」→「同期フォルダを選ぶ…」で同じ共有フォルダを指定するだけ</strong>です。
@@ -1700,6 +2234,17 @@ function init(){
   $("addMember").addEventListener("click", addMemberFromInput);
   $("newMember").addEventListener("keydown", e => { if(e.key === "Enter") addMemberFromInput(); });
 
+  $("certBtn").addEventListener("click", () => {
+    ui.screen = ui.screen === "certs" ? "gantt" : "certs";
+    saveLocal(); render();
+  });
+  $("addTypeBtn").addEventListener("click", addCertType);
+  $("cExpiry").addEventListener("input", updateCertHint);
+  $("cRenew").addEventListener("click", renewCert);
+  $("cSave").addEventListener("click", saveCert);
+  $("cDelete").addEventListener("click", deleteCert);
+  $("cCancel").addEventListener("click", () => { $("certMask").hidden = true; editingCert = null; });
+
   $("settingsBtn").addEventListener("click", () => {
     renderSettings(); $("setMask").hidden = false;
   });
@@ -1739,7 +2284,8 @@ function init(){
 
   document.addEventListener("keydown", e => {
     if(e.key !== "Escape") return;
-    ["taskMask","memberMask","helpMask","setMask"].forEach(id => { $(id).hidden = true; });
+    ["taskMask","memberMask","helpMask","setMask","certMask"].forEach(id => { $(id).hidden = true; });
+    editingCert = null;
     editingId = null;
   });
 
