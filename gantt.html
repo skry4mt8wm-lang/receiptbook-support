@@ -83,6 +83,33 @@
   .tick.holiday{background:#fdf1f1;}
   .tick.saturday{background:#f1f5fd;}
 
+  /* ---------- 全体予定レーン ---------- */
+  .evlane{
+    display:flex; border-bottom:2px solid var(--line-strong);
+    background:#fbfcfe; position:sticky; top:var(--head-h); z-index:25;
+  }
+  .evlane .name{background:#fbfcfe; font-size:12px;}
+  .evlane .name .sub{font-weight:400; font-size:10px; color:var(--muted);}
+  .evbars{position:relative; flex:1; cursor:crosshair;}
+  .evbar{
+    position:absolute; height:22px; border-radius:4px; color:#fff;
+    display:flex; align-items:center; gap:5px; padding:0 7px; overflow:hidden;
+    font-size:12px; white-space:nowrap; cursor:pointer; min-width:12px;
+    box-shadow:0 1px 2px rgba(0,0,0,.14);
+  }
+  .evbar .k{
+    flex:none; font-size:10px; background:rgba(255,255,255,.26);
+    border-radius:3px; padding:1px 4px;
+  }
+  .evbar .who{flex:none; font-size:10px; opacity:.9;}
+  .evbar.cut-l{border-top-left-radius:0; border-bottom-left-radius:0;}
+  .evbar.cut-r{border-top-right-radius:0; border-bottom-right-radius:0;}
+  .evempty{padding:6px 10px; font-size:11px; color:#b7bcc6;}
+
+  /* 全メンバー行を貫く背景帯（その期間に何があるか個人の予定と重ねて見る） */
+  .evband{position:absolute; top:0; bottom:0; pointer-events:none; opacity:.09;}
+  .evband.edge{border-left:1px dashed rgba(0,0,0,.28); border-right:1px dashed rgba(0,0,0,.28); opacity:.13;}
+
   .row{display:flex; border-bottom:1px solid var(--line); min-height:var(--row-h);}
   .row:hover .name{background:#f7f9fc;}
   .name{
@@ -135,6 +162,26 @@
     flex:1 1 auto; min-height:150px; display:flex; flex-direction:column;
     background:var(--panel); border-top:2px solid var(--line-strong);
   }
+  /* 月表示の「今後の全体予定」 */
+  #evlist{
+    flex:0 1 auto; max-height:34vh; overflow:auto;
+    background:var(--panel); border-top:2px solid var(--line-strong);
+  }
+  #evlist[hidden]{display:none;}
+  .evul{list-style:none; margin:0; padding:4px 0 8px;}
+  .evul li{
+    display:flex; gap:10px; align-items:flex-start; padding:7px 16px; cursor:pointer;
+    font-size:13px; border-bottom:1px solid #f2f4f7;
+  }
+  .evul li:hover{background:#f7f9fc;}
+  .evul li.none{color:var(--muted); cursor:default; font-size:12px;}
+  .evul .kd{
+    flex:none; color:#fff; font-size:11px; border-radius:4px;
+    padding:2px 7px; margin-top:1px;
+  }
+  .evul .ti{display:block; font-weight:600;}
+  .evul .dt{display:block; font-size:11px; color:var(--muted); margin-top:2px;}
+  .evul .dt b{color:var(--accent);}
   #daylist[hidden]{display:none;}
   .dl-head{
     display:flex; align-items:center; gap:10px; padding:7px 14px;
@@ -191,6 +238,13 @@
   }
   .field textarea{resize:vertical; min-height:60px;}
   .zhint{font-size:11px; color:#9aa1ad; margin-top:4px; min-height:14px;}
+  .kinds{display:flex; gap:8px; flex-wrap:wrap;}
+  .kinds button{
+    border:1px solid var(--line-strong); background:#fff; border-radius:6px;
+    padding:6px 14px; font:inherit; font-size:13px; display:flex; align-items:center; gap:6px;
+  }
+  .kinds button .sw{width:10px; height:10px; border-radius:3px;}
+  .kinds button.on{border-color:var(--accent); background:#eef3ff; font-weight:600;}
   /* ---------- 資格画面 ---------- */
   #certScreen{flex:1; overflow:auto; background:var(--panel); padding:14px 16px 30px;}
   #certScreen[hidden]{display:none;}
@@ -330,6 +384,7 @@
   <span class="range-label" id="rangeLabel"></span>
 
   <button class="btn primary" id="addBtn">＋ 新規作業</button>
+  <button class="btn" id="addEventBtn">＋ 全体予定</button>
   <button class="btn" id="addTypeBtn" hidden>＋ 資格の種類</button>
   <button class="btn" id="memberBtn">メンバー</button>
   <button class="btn" id="listBtn" hidden>作業一覧</button>
@@ -360,6 +415,9 @@
     <table id="certTable"></table>
   </div>
 </div>
+
+<!-- 月表示のときだけ出す、今後の全体予定 -->
+<section id="evlist" hidden></section>
 
 <!-- 週表示のときだけ出す、その日の作業の文字一覧 -->
 <section id="daylist" hidden>
@@ -440,6 +498,57 @@
     <div class="foot">
       <span class="spacer"></span>
       <button class="btn primary" id="memberClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== event modal ===== -->
+<div class="mask" id="eventMask" hidden>
+  <div class="modal">
+    <h2 id="eventTitle">全体予定</h2>
+    <div class="body">
+      <div class="field">
+        <label for="eTitle">内容</label>
+        <input id="eTitle" placeholder="例：北海道出張／新人訓練／本部長来訪">
+      </div>
+      <div class="field">
+        <label>種別</label>
+        <div class="kinds" id="eKinds"></div>
+      </div>
+      <div class="two">
+        <div class="field">
+          <label for="eStart">開始日</label>
+          <input id="eStart" type="date">
+        </div>
+        <div class="field">
+          <label for="eEnd">終了日（その日を含む）</label>
+          <input id="eEnd" type="date">
+        </div>
+      </div>
+      <div class="zhint" id="eSpan"></div>
+      <div class="field">
+        <label>
+          対象メンバー（任意）
+          <span class="pick">
+            <button type="button" id="ePickAll">全員</button>
+            <button type="button" id="ePickNone">解除</button>
+            <span id="ePickCount"></span>
+          </span>
+        </label>
+        <div class="checks" id="eMembers"></div>
+        <p class="note">選ばなければ「全員向けの予定」として扱います。</p>
+      </div>
+      <div class="field">
+        <label for="eNote">メモ（任意）</label>
+        <textarea id="eNote" rows="2"></textarea>
+      </div>
+      <p class="err" id="eventErr"></p>
+    </div>
+    <div class="foot">
+      <button class="btn danger" id="eDelete">削除</button>
+      <span class="spacer"></span>
+      <button class="btn" id="eCancel">キャンセル</button>
+      <button class="btn primary" id="eSave">保存</button>
     </div>
   </div>
 </div>
@@ -548,6 +657,15 @@
    定数
    ========================================================================= */
 const COLORS = ["#4F6AF0","#2fa84f","#e8a33d","#e0453e","#8b5cf6","#0ea5e9","#ec4899","#64748b"];
+
+/* 全体予定の種別（色は帯とバーの両方に使う） */
+const EVENT_KINDS = [
+  { id:"trip",     name:"出張",   color:"#0ea5e9" },
+  { id:"training", name:"訓練",   color:"#8b5cf6" },
+  { id:"visit",    name:"来訪",   color:"#e0453e" },
+  { id:"other",    name:"その他", color:"#64748b" },
+];
+const kindOf = id => EVENT_KINDS.find(k => k.id === id) || EVENT_KINDS[3];
 const LS_KEY = "teamGantt.data.v1";
 const LS_UI  = "teamGantt.ui.v1";
 const DAY_MS = 86400000;
@@ -628,7 +746,7 @@ const fmtYMD  = d => `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate(
 /* =========================================================================
    状態
    ========================================================================= */
-let state = { version:1, members:[], tasks:[], certTypes:[], certs:[] };
+let state = { version:1, members:[], tasks:[], certTypes:[], certs:[], events:[] };
 /* ui はこのPC専用の設定。書き出すJSONには含めない（meId＝このPCで入力する人） */
 let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())), showList:true, meId:"",
            fileName:"team-schedule.json", screen:"gantt" };
@@ -647,8 +765,27 @@ const $ = id => document.getElementById(id);
    データ正規化 / マージ
    ========================================================================= */
 function normalize(raw){
-  const out = { version:1, members:[], tasks:[], certTypes:[], certs:[] };
+  const out = { version:1, members:[], tasks:[], certTypes:[], certs:[], events:[] };
   if(!raw || typeof raw !== "object") return out;
+
+  /* 全体予定（長期出張・訓練・来訪など、チーム全体で把握したい予定） */
+  if(Array.isArray(raw.events)){
+    out.events = raw.events
+      .filter(e => e && typeof e.id === "string")
+      .map(e => ({
+        id: e.id,
+        title: typeof e.title === "string" ? e.title : "",
+        kind: EVENT_KINDS.some(k => k.id === e.kind) ? e.kind : "other",
+        start: parseDate(e.start) ? e.start : null,   // 日単位（YYYY-MM-DD）
+        end:   parseDate(e.end)   ? e.end   : null,   // 終了日も含む
+        memberIds: Array.isArray(e.memberIds)
+          ? [...new Set(e.memberIds.filter(x => typeof x === "string" && x))] : [],
+        note: typeof e.note === "string" ? e.note : "",
+        deleted: !!e.deleted,
+        updatedAt: Number.isFinite(e.updatedAt) ? e.updatedAt : 0,
+      }))
+      .filter(e => e.deleted || (e.start && e.end));
+  }
 
   /* 資格の種類（年1回更新の資格を数種類ぶん登録する） */
   if(Array.isArray(raw.certTypes)){
@@ -729,6 +866,7 @@ function mergeState(local, remote){
     tasks:     mergeLists(local.tasks || [],     remote.tasks || []),
     certTypes: mergeLists(local.certTypes || [], remote.certTypes || []),
     certs:     mergeLists(local.certs || [],     remote.certs || []),
+    events:    mergeLists(local.events || [],    remote.events || []),
   };
 }
 /** 古い tombstone を掃除（ファイルの肥大化防止） */
@@ -739,6 +877,7 @@ function purge(s){
   s.tasks     = keep(s.tasks);
   s.certTypes = keep(s.certTypes);
   s.certs     = keep(s.certs);
+  s.events    = keep(s.events);
   return s;
 }
 
@@ -750,6 +889,22 @@ const liveCertTypes = () =>
   (state.certTypes || []).filter(t => !t.deleted)
     .sort((a,b) => a.order - b.order || a.name.localeCompare(b.name,"ja"));
 const liveCerts = () => (state.certs || []).filter(c => !c.deleted);
+const liveEvents = () => (state.events || []).filter(e => !e.deleted);
+
+/** 全体予定の期間（終了日は「その日いっぱい」なので翌日0時まで） */
+function eventSpan(e){
+  const s = parseDate(e.start), en = parseDate(e.end);
+  if(!s || !en) return null;
+  return { start:s, end:addDays(en, 1) };
+}
+/** 表示中の期間に重なる全体予定を、開始が早い順に返す */
+function eventsIn(rangeStart, rangeEnd){
+  return liveEvents()
+    .map(e => ({ e, sp:eventSpan(e) }))
+    .filter(x => x.sp && x.sp.end > rangeStart && x.sp.start < rangeEnd)
+    .sort((a,b) => a.sp.start - b.sp.start || b.sp.end - a.sp.end)
+    .map(x => x.e);
+}
 /** 特定の人の特定の資格（無ければ undefined） */
 const certOf = (memberId, typeId) =>
   liveCerts().find(c => c.memberId === memberId && c.typeId === typeId);
@@ -886,8 +1041,10 @@ function render(){
   $("addTypeBtn").hidden = !onCerts;
   $("certBtn").textContent = onCerts ? "🗓 スケジュール" : "🎓 資格";
   $("certBtn").classList.toggle("primary", onCerts);
+  $("addEventBtn").hidden = onCerts;
   if(onCerts){
     $("listBtn").hidden = true;
+    $("evlist").hidden = true;
     document.body.classList.remove("has-list");
     renderCertScreen();
     return;
@@ -931,6 +1088,10 @@ function render(){
   });
   head.appendChild(tickWrap);
   board.appendChild(head);
+
+  /* --- 全体予定レーン（日・週・月すべてで最上部に出す） --- */
+  const ev = buildEventLane(range, pct, tlWidth);
+  board.appendChild(ev.lane);
 
   /* --- 行（メンバーごと） --- */
   const members = liveMembers();
@@ -991,6 +1152,9 @@ function render(){
 
     const lanes = document.createElement("div");
     lanes.className = "lanes";
+
+    /* 全体予定の期間を背景に敷く（誰が抜けるか個人の予定と重ねて見えるように） */
+    paintEventBands(lanes, ev.placed, pct);
 
     /* 背景（土日の色分け＋区切り線） */
     ticks.forEach(t => {
@@ -1079,6 +1243,7 @@ function render(){
   $("listBtn").hidden = ui.view !== "week";
   $("listBtn").textContent = ui.showList ? "作業一覧を隠す" : "作業一覧を表示";
   renderDayList(range);
+  renderEventList();
 }
 
 /* -------------------------------------------------------------------------
@@ -1148,6 +1313,237 @@ function renderDayList(range){
     col.appendChild(ul);
     grid.appendChild(col);
   }
+}
+
+/* =========================================================================
+   全体予定（長期出張・訓練・来訪など、チーム全体で把握したい予定）
+   ========================================================================= */
+/** 全体予定レーンを作る。重なるものは段組みにする */
+function buildEventLane(range, pct, tlWidth){
+  const lane = document.createElement("div");
+  lane.className = "evlane";
+
+  const list = eventsIn(range.start, range.end);
+  const name = document.createElement("div");
+  name.className = "name";
+  name.innerHTML = `<span>全体予定</span><span class="sub">${list.length}件</span>`;
+  lane.appendChild(name);
+
+  const bars = document.createElement("div");
+  bars.className = "evbars";
+  bars.title = "クリックで全体予定を追加";
+  bars.addEventListener("click", ev => {
+    if(ev.target !== bars) return;
+    const r = bars.getBoundingClientRect();
+    const at = range.start.getTime() + (ev.clientX - r.left) / r.width * (range.end - range.start);
+    openEvent(null, startOfDay(new Date(at)));
+  });
+
+  if(!list.length){
+    bars.innerHTML = `<div class="evempty">この期間の全体予定はありません（クリックで追加）</div>`;
+    lane.appendChild(bars);
+    return { lane, placed:[] };
+  }
+
+  /* 重なりを段に振り分ける */
+  const lanes = [];
+  const placed = [];
+  for(const e of list){
+    const sp = eventSpan(e);
+    let li = lanes.findIndex(end => end <= sp.start.getTime());
+    if(li === -1){ lanes.push(sp.end.getTime()); li = lanes.length - 1; }
+    else lanes[li] = sp.end.getTime();
+    placed.push({ e, sp, lane:li });
+  }
+  bars.style.minHeight = (lanes.length * 26 + 6) + "px";
+
+  for(const p of placed){
+    const k = kindOf(p.e.kind);
+    const left  = Math.max(0, pct(p.sp.start.getTime()));
+    const right = Math.min(100, pct(p.sp.end.getTime()));
+    const bar = document.createElement("div");
+    bar.className = "evbar"
+      + (p.sp.start < range.start ? " cut-l" : "")
+      + (p.sp.end > range.end ? " cut-r" : "");
+    bar.style.left = left + "%";
+    bar.style.width = Math.max(right - left, 0.4) + "%";
+    bar.style.top = (p.lane * 26 + 4) + "px";
+    bar.style.background = k.color;
+
+    const names = p.e.memberIds
+      .map(id => (liveMembers().find(m => m.id === id) || {}).name)
+      .filter(Boolean);
+    /* 幅が狭いバーでは種別バッジを省き、内容の表示を優先する */
+    const barPx = (right - left) / 100 * tlWidth;
+    bar.innerHTML = (barPx > 96 ? `<span class="k">${k.name}</span>` : "")
+      + `<span class="t">${esc(p.e.title || "(無題)")}</span>`
+      + (names.length && barPx > 190 ? `<span class="who">${esc(names.join("、"))}</span>` : "");
+    bar.title = `${k.name}：${p.e.title || "(無題)"}\n${p.e.start} 〜 ${p.e.end}`
+      + `\n対象：${names.length ? names.join("、") : "全員"}`
+      + (p.e.note ? `\n\n${p.e.note}` : "");
+    bar.addEventListener("click", ev => { ev.stopPropagation(); openEvent(p.e.id); });
+    bars.appendChild(bar);
+  }
+  lane.appendChild(bars);
+  return { lane, placed };
+}
+
+/** メンバー行の背景に、全体予定の期間を薄く敷く */
+function paintEventBands(lanesEl, placed, pct){
+  for(const p of placed){
+    const k = kindOf(p.e.kind);
+    const left  = Math.max(0, pct(p.sp.start.getTime()));
+    const right = Math.min(100, pct(p.sp.end.getTime()));
+    const band = document.createElement("div");
+    band.className = "evband edge";
+    band.style.left = left + "%";
+    band.style.width = Math.max(right - left, 0.3) + "%";
+    band.style.background = k.color;
+    lanesEl.appendChild(band);
+  }
+}
+
+/* --- 全体予定のダイアログ --- */
+let editingEvent = null;
+let eventKind = "trip";
+function renderKinds(){
+  const box = $("eKinds");
+  box.innerHTML = "";
+  for(const k of EVENT_KINDS){
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = k.id === eventKind ? "on" : "";
+    b.innerHTML = `<span class="sw" style="background:${k.color}"></span>${k.name}`;
+    b.addEventListener("click", () => { eventKind = k.id; renderKinds(); });
+    box.appendChild(b);
+  }
+}
+function renderEventMembers(selected){
+  const box = $("eMembers");
+  box.innerHTML = "";
+  const list = liveMembers();
+  if(!list.length) box.innerHTML = `<div class="none">メンバーが登録されていません。</div>`;
+  for(const m of list){
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = m.id; cb.checked = selected.includes(m.id);
+    cb.addEventListener("change", updateEventPick);
+    const span = document.createElement("span");
+    span.textContent = m.name;
+    label.append(cb, span);
+    box.appendChild(label);
+  }
+  updateEventPick();
+}
+const eventChecks = () => [...$("eMembers").querySelectorAll("input[type=checkbox]")];
+const eventMemberIds = () => eventChecks().filter(c => c.checked).map(c => c.value);
+function updateEventPick(){
+  const n = eventMemberIds().length;
+  $("ePickCount").textContent = n ? `${n}名` : "全員向け";
+}
+function updateEventSpan(){
+  const s = parseDate($("eStart").value), e = parseDate($("eEnd").value);
+  $("eSpan").textContent = (s && e && e >= s)
+    ? `期間：${Math.round((e - s) / DAY_MS) + 1}日間`
+    : "";
+}
+
+function openEvent(id, presetDate){
+  const ev = id ? liveEvents().find(x => x.id === id) : null;
+  editingEvent = id;
+  $("eventErr").textContent = "";
+  if(ev){
+    $("eventTitle").textContent = "全体予定の編集";
+    eventKind = ev.kind;
+    $("eTitle").value = ev.title;
+    $("eStart").value = ev.start;
+    $("eEnd").value = ev.end;
+    $("eNote").value = ev.note;
+    renderEventMembers(ev.memberIds);
+    $("eDelete").hidden = false;
+  }else{
+    $("eventTitle").textContent = "全体予定の追加";
+    eventKind = "trip";
+    const d = toDateStr(presetDate || startOfDay(new Date()));
+    $("eTitle").value = "";
+    $("eStart").value = d;
+    $("eEnd").value = d;
+    $("eNote").value = "";
+    renderEventMembers([]);
+    $("eDelete").hidden = true;
+  }
+  renderKinds();
+  updateEventSpan();
+  $("eventMask").hidden = false;
+  $("eTitle").focus();
+}
+function saveEvent(){
+  const title = $("eTitle").value.trim();
+  const s = parseDate($("eStart").value), e = parseDate($("eEnd").value);
+  const err = $("eventErr");
+  if(!title){ err.textContent = "内容を入力してください。"; return; }
+  if(!s || !e){ err.textContent = "開始日と終了日を入力してください。"; return; }
+  if(e < s){ err.textContent = "終了日は開始日と同じか、それより後にしてください。"; return; }
+
+  const now = Date.now();
+  const data = {
+    title, kind:eventKind,
+    start:$("eStart").value, end:$("eEnd").value,
+    memberIds:eventMemberIds(), note:$("eNote").value.trim(), updatedAt:now,
+  };
+  if(editingEvent){
+    Object.assign(liveEvents().find(x => x.id === editingEvent), data);
+  }else{
+    state.events.push({ id:uid(), deleted:false, ...data });
+  }
+  $("eventMask").hidden = true;
+  editingEvent = null;
+  changed();
+}
+function deleteEvent(){
+  const ev = liveEvents().find(x => x.id === editingEvent);
+  if(!ev) return;
+  if(!confirm(`「${ev.title || "(無題)"}」を削除しますか？`)) return;
+  ev.deleted = true; ev.updatedAt = Date.now();
+  $("eventMask").hidden = true;
+  editingEvent = null;
+  changed();
+}
+
+/** 月表示の下に出す「今後の全体予定」（直近3ヶ月ぶん） */
+function renderEventList(){
+  const sec = $("evlist");
+  if(ui.view !== "month" || ui.screen === "certs"){ sec.hidden = true; return; }
+  const today = startOfDay(new Date());
+  const until = addMonths(startOfDay(new Date()), 4);
+  const list = liveEvents()
+    .map(e => ({ e, sp:eventSpan(e) }))
+    .filter(x => x.sp && x.sp.end > today && x.sp.start < until)
+    .sort((a,b) => a.sp.start - b.sp.start);
+
+  sec.hidden = false;
+  const body = list.length
+    ? list.map(x => {
+        const k = kindOf(x.e.kind);
+        const names = x.e.memberIds
+          .map(id => (liveMembers().find(m => m.id === id) || {}).name).filter(Boolean);
+        const d = Math.round((x.sp.start - today) / DAY_MS);
+        const when = d <= 0 ? "進行中" : `あと${d}日`;
+        const days = Math.round((x.sp.end - x.sp.start) / DAY_MS);
+        return `<li>`
+          + `<span class="kd" style="background:${k.color}">${k.name}</span>`
+          + `<span class="tx"><span class="ti">${esc(x.e.title || "(無題)")}</span>`
+          + `<span class="dt">${esc(x.e.start)} 〜 ${esc(x.e.end)}（${days}日間）`
+          + `　<b>${when}</b>　${names.length ? esc(names.join("、")) : "全員"}</span></span></li>`;
+      }).join("")
+    : `<li class="none">今後4ヶ月の全体予定はありません。</li>`;
+  sec.innerHTML = `<div class="dl-head"><strong>今後の全体予定</strong>`
+    + `<span class="dl-note">クリックで編集できます</span></div>`
+    + `<ul class="evul">${body}</ul>`;
+
+  [...sec.querySelectorAll(".evul li")].forEach((li, i) => {
+    if(list[i]) li.addEventListener("click", () => openEvent(list[i].e.id));
+  });
 }
 
 /* =========================================================================
@@ -2107,6 +2503,19 @@ const HELP_HTML = `
   <li><kbd>Esc</kbd> でダイアログを閉じます。</li>
 </ul>
 
+<p><strong>全体予定（長期出張・訓練・来訪など）</strong></p>
+<ul>
+  <li>個人の作業とは別に、<strong>チーム全体で把握したい予定</strong>を登録できます。
+      「＋ 全体予定」、またはチャート最上部の<strong>全体予定レーンをクリック</strong>して追加します。</li>
+  <li>種別は<strong>出張／訓練／来訪／その他</strong>で、それぞれ色が付きます。期間は日単位（終了日を含む）です。</li>
+  <li>全体予定レーンは<strong>日・週・月すべての表示で最上部</strong>に出ます。重なる予定は自動で段組みになります。</li>
+  <li>登録した期間は<strong>各メンバー行の背景に薄く色づく</strong>ので、
+      「この期間は誰が抜けるのか」を個人の予定と重ねて確認できます。</li>
+  <li>対象メンバーは任意です。選ばなければ「全員向けの予定」として扱います。</li>
+  <li><strong>月表示では、チャートの下に「今後の全体予定」</strong>が一覧で出ます（今後4ヶ月ぶん）。
+      開始までの日数も表示され、クリックで編集できます。</li>
+</ul>
+
 <p><strong>資格の期限を管理する（🎓 資格）</strong></p>
 <ul>
   <li>「🎓 資格」ボタンで資格画面に切り替わります。<strong>縦がメンバー、横が資格の種類</strong>のマトリクスです。</li>
@@ -2234,6 +2643,28 @@ function init(){
   $("addMember").addEventListener("click", addMemberFromInput);
   $("newMember").addEventListener("keydown", e => { if(e.key === "Enter") addMemberFromInput(); });
 
+  $("addEventBtn").addEventListener("click", () => {
+    const r = currentRange();
+    const now = new Date();
+    openEvent(null, (now >= r.start && now < r.end) ? startOfDay(now) : r.start);
+  });
+  $("eStart").addEventListener("input", () => {
+    /* 開始日を終了日より後にしたら、終了日も合わせる */
+    const s = parseDate($("eStart").value), e = parseDate($("eEnd").value);
+    if(s && (!e || e < s)) $("eEnd").value = $("eStart").value;
+    updateEventSpan();
+  });
+  $("eEnd").addEventListener("input", updateEventSpan);
+  $("ePickAll").addEventListener("click", () => {
+    eventChecks().forEach(c => { c.checked = true; }); updateEventPick();
+  });
+  $("ePickNone").addEventListener("click", () => {
+    eventChecks().forEach(c => { c.checked = false; }); updateEventPick();
+  });
+  $("eSave").addEventListener("click", saveEvent);
+  $("eDelete").addEventListener("click", deleteEvent);
+  $("eCancel").addEventListener("click", () => { $("eventMask").hidden = true; editingEvent = null; });
+
   $("certBtn").addEventListener("click", () => {
     ui.screen = ui.screen === "certs" ? "gantt" : "certs";
     saveLocal(); render();
@@ -2284,8 +2715,9 @@ function init(){
 
   document.addEventListener("keydown", e => {
     if(e.key !== "Escape") return;
-    ["taskMask","memberMask","helpMask","setMask","certMask"].forEach(id => { $(id).hidden = true; });
-    editingCert = null;
+    ["taskMask","memberMask","helpMask","setMask","certMask","eventMask"]
+      .forEach(id => { $(id).hidden = true; });
+    editingCert = null; editingEvent = null;
     editingId = null;
   });
 
