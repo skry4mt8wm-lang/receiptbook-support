@@ -8,7 +8,7 @@
 |---|---|
 | `gantt.html` | **本体。これが製品そのもの**。単一HTMLファイルで完結 |
 | `GANTT-README.md` | 利用者向けの説明書（日本語） |
-| `tests/` | Playwright による実ブラウザテスト（168項目） |
+| `tests/` | Playwright による実ブラウザテスト（207項目） |
 | `index.html` | 無関係な別プロジェクト（ReceiptBook のサポートページ）。触らない |
 
 ## 何を作っているか
@@ -24,6 +24,7 @@ Windows PC のブラウザで動く**チームスケジュール管理アプリ*
 - 週表示では、下部に作業内容の文字一覧
 - **全体予定**（長期出張・訓練・来訪）を全表示の最上部レーン＋背景帯で表示
 - **資格の期限管理**（年1回更新）。属人化・期限集中の警告つき
+- **特別の日課**（7時間45分の超過分を貯めて消費。8週間で失効）と月次報告
 - **共有フォルダ経由で約5秒ごとに全員と同期**（サーバー不要）
 
 ## 絶対に守ること
@@ -75,8 +76,10 @@ state = {
   certTypes[] { id, name, order, deleted, updatedAt }
   certs[]     { id, memberId, typeId, expiry, lastRenewed, note, deleted, updatedAt }
   events[]    { id, title, kind, start, end, memberIds[], note, deleted, updatedAt }
+  dutyPatterns[] { id, code, name, kind, start, end, breakMin, order, deleted, updatedAt }
+  duties[]    { id, memberId, date, patternId, note, deleted, updatedAt }
 }
-ui = { view, anchor, showList, meId, fileName, screen }
+ui = { view, anchor, showList, meId, fileName, screen, dutyMonth }
 ```
 
 - マージは **id ごとに updatedAt が新しい方が勝つ**（last-write-wins）
@@ -84,11 +87,19 @@ ui = { view, anchor, showList, meId, fileName, screen }
 - `tasks` は時刻まで（`YYYY-MM-DDTHH:MM`）、`certs`/`events` は日付のみ（`YYYY-MM-DD`）
 - `events.end` は**その日を含む**（描画時に翌日0時へ変換）
 
+### 特別の日課の計算
+
+- 基準は `BASE_MIN`（7時間45分＝465分）。パターンの実働との差が増減になる
+- 貯めた分は `DUTY_EXPIRE_DAYS`（8週間＝56日）で失効。**古い分から先に消費**する
+- 計算は `dutyLedger()` に集約。残高・失効・不足をここで出す
+- 勤務枠は**タスクとして保存しない**。`paintDutyFrames()` が毎回描く
+- **PDFからパターンを取り込む予定**。台帳の項目はその受け皿
+
 ## テスト
 
 ```
 npm install playwright     # 初回のみ
-node tests/run-all.js      # 168項目
+node tests/run-all.js      # 207項目
 ```
 
 変更したら関連するテストを実行し、**新しい機能にはテストを足す**。

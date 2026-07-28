@@ -107,6 +107,16 @@
   .evempty{padding:6px 10px; font-size:11px; color:#b7bcc6;}
 
   /* 全メンバー行を貫く背景帯（その期間に何があるか個人の予定と重ねて見る） */
+  /* 特別の日課で決まった、その日の勤務時間の枠 */
+  .dutyframe{
+    position:absolute; top:1px; bottom:1px; border:1px dashed; border-radius:4px;
+    pointer-events:none; opacity:.55;
+  }
+  .dutyframe span{
+    position:absolute; right:3px; top:1px; font-size:9px; color:var(--muted);
+    background:rgba(255,255,255,.75); border-radius:3px; padding:0 3px;
+  }
+
   .evband{position:absolute; top:0; bottom:0; pointer-events:none; opacity:.09;}
   .evband.edge{border-left:1px dashed rgba(0,0,0,.28); border-right:1px dashed rgba(0,0,0,.28); opacity:.13;}
 
@@ -309,6 +319,68 @@
   #certBanner .mine{font-weight:600;}
   #certBanner .rest{color:var(--muted); font-size:12px;}
 
+  /* ---------- 特別の日課 ---------- */
+  #dutyScreen, #reportScreen{flex:1; overflow:auto; background:var(--panel); padding:12px 16px 30px;}
+  #dutyScreen[hidden], #reportScreen[hidden]{display:none;}
+  .dutybar{display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;}
+  .dlegend{display:flex; gap:10px; font-size:11px; color:var(--muted); align-items:center;}
+  .dlegend span.sw{width:10px; height:10px; border-radius:3px; display:inline-block; margin-right:3px;}
+
+  #dutyTable{border-collapse:separate; border-spacing:0; font-size:12px;}
+  #dutyTable th, #dutyTable td{border-bottom:1px solid var(--line); padding:0; text-align:center;}
+  #dutyTable thead th{
+    position:sticky; top:0; z-index:5; background:var(--panel); padding:5px 2px;
+    border-bottom:2px solid var(--line-strong); font-size:11px; white-space:nowrap;
+  }
+  #dutyTable th.mem, #dutyTable td.mem{
+    position:sticky; left:0; z-index:4; background:var(--panel); text-align:left;
+    border-right:1px solid var(--line-strong); padding:4px 10px; white-space:nowrap;
+    font-weight:600; min-width:150px;
+  }
+  #dutyTable thead th.mem{z-index:6;}
+  #dutyTable th.sat, #dutyTable td.sat{background:#f7f9fd;}
+  #dutyTable th.sun, #dutyTable td.sun{background:#fdf7f7;}
+  #dutyTable tr.me td.mem{background:#eef3ff; box-shadow:inset 3px 0 0 var(--accent);}
+  .dcell{
+    display:block; width:100%; min-width:30px; border:0; background:transparent;
+    padding:5px 1px; font:inherit; font-size:11px; cursor:pointer; color:#c8ccd3;
+  }
+  .dcell.set{font-weight:700; color:#fff; border-radius:3px;}
+  #dutyTable td.total{
+    border-left:1px solid var(--line-strong); padding:4px 8px;
+    font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  #dutyTable td.total.bal{font-weight:700;}
+  .minus{color:var(--danger);}
+  .plus{color:#2fa84f;}
+
+  .dwarn{
+    border:1px solid #f0d3a0; background:#fdf8ef; border-radius:8px;
+    padding:9px 13px; margin-bottom:8px; font-size:13px;
+  }
+  .dwarn.bad{border-color:#f0b6b2; background:#fdf0ef;}
+  #dutyWarn:empty{display:none;}
+
+  /* 月次報告 */
+  .rtable{border-collapse:collapse; width:100%; font-size:12px; margin-top:8px;}
+  .rtable th, .rtable td{border:1px solid var(--line-strong); padding:5px 8px; text-align:right;}
+  .rtable th{background:#f2f4f8; text-align:center; white-space:nowrap;}
+  .rtable td.nm{text-align:left; white-space:nowrap; font-weight:600;}
+  .rtable tfoot td{background:#f7f9fc; font-weight:700;}
+  .rtitle{font-size:15px; font-weight:700; margin:0 0 2px;}
+  .rsub{font-size:11px; color:var(--muted); margin:0 0 10px;}
+  .rdetail{margin-top:20px;}
+  .rdetail h3{font-size:13px; margin:14px 0 4px;}
+  .rdetail table{border-collapse:collapse; font-size:11px;}
+  .rdetail th, .rdetail td{border:1px solid var(--line); padding:3px 7px;}
+
+  @media print{
+    header, .dutybar, .noprint, #certBanner{display:none !important;}
+    #reportScreen{overflow:visible; padding:0;}
+    .rtable{font-size:10pt;}
+    body{background:#fff;}
+  }
+
   /* ---------- 設定ダイアログ ---------- */
   .setblock{
     background:#f7f9fc; border:1px solid var(--line); border-radius:8px;
@@ -389,6 +461,10 @@
   <button class="btn" id="memberBtn">メンバー</button>
   <button class="btn" id="listBtn" hidden>作業一覧</button>
   <button class="btn" id="certBtn">🎓 資格</button>
+  <button class="btn" id="dutyBtn">🕐 特日課</button>
+  <button class="btn" id="patternBtn" hidden>パターン台帳</button>
+  <button class="btn" id="bulkBtn" hidden>まとめて割当</button>
+  <button class="btn" id="reportBtn" hidden>月次報告</button>
 
   <span class="spacer"></span>
 
@@ -406,6 +482,34 @@
 
 <div id="scroller">
   <div id="board"></div>
+</div>
+
+<!-- ===== 特別の日課 画面 ===== -->
+<div id="dutyScreen" hidden>
+  <div class="dutybar">
+    <button class="btn" id="dPrev">◀</button>
+    <button class="btn" id="dThis">今月</button>
+    <button class="btn" id="dNext">▶</button>
+    <span class="range-label" id="dMonth"></span>
+    <span class="dlegend" id="dLegend"></span>
+  </div>
+  <div id="dutyWarn"></div>
+  <div class="certwrap"><table id="dutyTable"></table></div>
+</div>
+
+<!-- ===== 月次報告 画面 ===== -->
+<div id="reportScreen" hidden>
+  <div class="dutybar noprint">
+    <button class="btn" id="rPrev">◀</button>
+    <button class="btn" id="rThis">今月</button>
+    <button class="btn" id="rNext">▶</button>
+    <span class="range-label" id="rMonth"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="rCsv">CSVで書き出す</button>
+    <button class="btn" id="rPrint">印刷する</button>
+    <button class="btn primary" id="rBack">割当画面に戻る</button>
+  </div>
+  <div id="reportBody"></div>
 </div>
 
 <!-- ===== 資格画面 ===== -->
@@ -498,6 +602,86 @@
     <div class="foot">
       <span class="spacer"></span>
       <button class="btn primary" id="memberClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 日課の割当 modal ===== -->
+<div class="mask" id="dutyMask" hidden>
+  <div class="modal">
+    <h2>日課の割当</h2>
+    <div class="body">
+      <div class="setnow" id="dutyWho"></div>
+      <div class="field">
+        <label>パターン</label>
+        <div class="checks" id="dutyPick"></div>
+      </div>
+      <p class="err" id="dutyErr"></p>
+    </div>
+    <div class="foot">
+      <button class="btn danger" id="dutyClear">割当を外す</button>
+      <span class="spacer"></span>
+      <button class="btn" id="dutyCancel">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== パターン台帳 modal ===== -->
+<div class="mask" id="patMask" hidden>
+  <div class="modal wide">
+    <h2>特別の日課 パターン台帳</h2>
+    <div class="body">
+      <p class="note">
+        1日の基準は <strong>7時間45分</strong>。実働との差が自動で増減になります。
+        LONG は貯まり、SHORT は消費します。取得期限は発生から <strong>8週間</strong>です。
+      </p>
+      <div class="certwrap"><table id="patTable"></table></div>
+      <div class="setrow" style="margin-top:12px;">
+        <button class="btn primary" id="patAdd">＋ パターンを追加</button>
+      </div>
+    </div>
+    <div class="foot">
+      <span class="spacer"></span>
+      <button class="btn primary" id="patClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== まとめて割当 modal ===== -->
+<div class="mask" id="bulkMask" hidden>
+  <div class="modal">
+    <h2>まとめて割当</h2>
+    <div class="body">
+      <div class="field">
+        <label>パターン</label>
+        <select id="bulkPattern"></select>
+      </div>
+      <div class="two">
+        <div class="field"><label for="bulkStart">開始日</label><input id="bulkStart" type="date"></div>
+        <div class="field"><label for="bulkEnd">終了日</label><input id="bulkEnd" type="date"></div>
+      </div>
+      <div class="field">
+        <label>曜日をしぼる（任意）</label>
+        <div class="checks" id="bulkDows" style="max-height:none;"></div>
+      </div>
+      <div class="field">
+        <label>
+          対象メンバー
+          <span class="pick">
+            <button type="button" id="bulkAll">全員</button>
+            <button type="button" id="bulkNone">解除</button>
+            <span id="bulkCount"></span>
+          </span>
+        </label>
+        <div class="checks" id="bulkMembers"></div>
+      </div>
+      <p class="err" id="bulkErr"></p>
+    </div>
+    <div class="foot">
+      <button class="btn danger" id="bulkDelete">この範囲の割当を消す</button>
+      <span class="spacer"></span>
+      <button class="btn" id="bulkCancel">キャンセル</button>
+      <button class="btn primary" id="bulkSave">割り当てる</button>
     </div>
   </div>
 </div>
@@ -666,6 +850,18 @@ const EVENT_KINDS = [
   { id:"other",    name:"その他", color:"#64748b" },
 ];
 const kindOf = id => EVENT_KINDS.find(k => k.id === id) || EVENT_KINDS[3];
+
+/* --- 特別の日課 ---------------------------------------------------------
+   1日の勤務時間 7時間45分（465分）を超えた分を貯め、SHORT勤務の日に消費する。
+   貯めた分の取得期限は発生から8週間。古いものから先に使う（先入れ先出し）。 */
+const BASE_MIN = 7 * 60 + 45;
+const DUTY_EXPIRE_DAYS = 8 * 7;
+const DUTY_KINDS = [
+  { id:"long",   name:"LONG",   color:"#0ea5e9" },
+  { id:"short",  name:"SHORT",  color:"#e8a33d" },
+  { id:"normal", name:"通常",   color:"#94a3b8" },
+];
+const dutyKindOf = id => DUTY_KINDS.find(k => k.id === id) || DUTY_KINDS[2];
 const LS_KEY = "teamGantt.data.v1";
 const LS_UI  = "teamGantt.ui.v1";
 const DAY_MS = 86400000;
@@ -738,6 +934,21 @@ function plusOneYear(dateStr){
   return toDateStr(new Date(y, m, Math.min(day, last)));
 }
 
+/** "HH:MM" を分に。不正なら null */
+function parseHM(s){
+  if(typeof s !== "string") return null;
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if(!m) return null;
+  const h = +m[1], mi = +m[2];
+  return (h <= 47 && mi < 60) ? h * 60 + mi : null;
+}
+/** 分を "7:45" 形式に。符号つきなら "+1:30" / "-0:45" */
+function fmtMin(min, signed){
+  const s = min < 0 ? "-" : (signed ? "+" : "");
+  const a = Math.abs(min);
+  return `${s}${Math.floor(a/60)}:${pad(a%60)}`;
+}
+
 const WD = ["日","月","火","水","木","金","土"];
 const fmtHM   = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const fmtMD   = d => `${d.getMonth()+1}/${d.getDate()}`;
@@ -746,10 +957,12 @@ const fmtYMD  = d => `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate(
 /* =========================================================================
    状態
    ========================================================================= */
-let state = { version:1, members:[], tasks:[], certTypes:[], certs:[], events:[] };
+let state = { version:1, members:[], tasks:[], certTypes:[], certs:[], events:[],
+              dutyPatterns:[], duties:[] };
 /* ui はこのPC専用の設定。書き出すJSONには含めない（meId＝このPCで入力する人） */
 let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())), showList:true, meId:"",
-           fileName:"team-schedule.json", screen:"gantt" };
+           fileName:"team-schedule.json", screen:"gantt",
+           dutyMonth:`${new Date().getFullYear()}-${pad(new Date().getMonth()+1)}` };
 let dirty = false;              // ファイルに未保存の変更があるか
 let fileHandle = null;          // File System Access API のハンドル
 let lastFileModified = 0;       // 直近に読み込んだファイルの更新時刻
@@ -765,8 +978,42 @@ const $ = id => document.getElementById(id);
    データ正規化 / マージ
    ========================================================================= */
 function normalize(raw){
-  const out = { version:1, members:[], tasks:[], certTypes:[], certs:[], events:[] };
+  const out = { version:1, members:[], tasks:[], certTypes:[], certs:[], events:[],
+                dutyPatterns:[], duties:[] };
   if(!raw || typeof raw !== "object") return out;
+
+  /* 特別の日課のパターン台帳（LONG/SHORT の勤務時間） */
+  if(Array.isArray(raw.dutyPatterns)){
+    out.dutyPatterns = raw.dutyPatterns
+      .filter(p => p && typeof p.id === "string")
+      .map((p,i) => ({
+        id: p.id,
+        code: typeof p.code === "string" ? p.code : "",
+        name: typeof p.name === "string" ? p.name : "",
+        kind: DUTY_KINDS.some(k => k.id === p.kind) ? p.kind : "normal",
+        start: parseHM(p.start) !== null ? p.start : "08:30",
+        end:   parseHM(p.end)   !== null ? p.end   : "17:15",
+        breakMin: Number.isFinite(p.breakMin) ? Math.max(0, p.breakMin) : 60,
+        order: Number.isFinite(p.order) ? p.order : i,
+        deleted: !!p.deleted,
+        updatedAt: Number.isFinite(p.updatedAt) ? p.updatedAt : 0,
+      }));
+  }
+  /* 誰のどの日にどのパターンを割り当てたか */
+  if(Array.isArray(raw.duties)){
+    out.duties = raw.duties
+      .filter(d => d && typeof d.id === "string")
+      .map(d => ({
+        id: d.id,
+        memberId: typeof d.memberId === "string" ? d.memberId : "",
+        date: parseDate(d.date) ? d.date : null,
+        patternId: typeof d.patternId === "string" ? d.patternId : "",
+        note: typeof d.note === "string" ? d.note : "",
+        deleted: !!d.deleted,
+        updatedAt: Number.isFinite(d.updatedAt) ? d.updatedAt : 0,
+      }))
+      .filter(d => d.deleted || (d.memberId && d.date && d.patternId));
+  }
 
   /* 全体予定（長期出張・訓練・来訪など、チーム全体で把握したい予定） */
   if(Array.isArray(raw.events)){
@@ -867,6 +1114,8 @@ function mergeState(local, remote){
     certTypes: mergeLists(local.certTypes || [], remote.certTypes || []),
     certs:     mergeLists(local.certs || [],     remote.certs || []),
     events:    mergeLists(local.events || [],    remote.events || []),
+    dutyPatterns: mergeLists(local.dutyPatterns || [], remote.dutyPatterns || []),
+    duties:       mergeLists(local.duties || [],       remote.duties || []),
   };
 }
 /** 古い tombstone を掃除（ファイルの肥大化防止） */
@@ -878,6 +1127,8 @@ function purge(s){
   s.certTypes = keep(s.certTypes);
   s.certs     = keep(s.certs);
   s.events    = keep(s.events);
+  s.dutyPatterns = keep(s.dutyPatterns);
+  s.duties       = keep(s.duties);
   return s;
 }
 
@@ -890,6 +1141,101 @@ const liveCertTypes = () =>
     .sort((a,b) => a.order - b.order || a.name.localeCompare(b.name,"ja"));
 const liveCerts = () => (state.certs || []).filter(c => !c.deleted);
 const liveEvents = () => (state.events || []).filter(e => !e.deleted);
+
+/* --- 特別の日課 --- */
+const liveDutyPatterns = () =>
+  (state.dutyPatterns || []).filter(p => !p.deleted)
+    .sort((a,b) => a.order - b.order || a.code.localeCompare(b.code,"ja"));
+const liveDuties = () => (state.duties || []).filter(d => !d.deleted);
+const patternById = id => (state.dutyPatterns || []).find(p => p.id === id && !p.deleted);
+const dutyOf = (memberId, date) =>
+  liveDuties().find(d => d.memberId === memberId && d.date === date);
+
+/** パターンの実働分数（終了が開始より前なら翌日にまたぐものとして扱う） */
+function patternWorkMin(p){
+  const s = parseHM(p.start), e = parseHM(p.end);
+  if(s === null || e === null) return 0;
+  const span = (e > s ? e : e + 24 * 60) - s;
+  return Math.max(0, span - (p.breakMin || 0));
+}
+/** 7時間45分に対する増減。LONGならプラス、SHORTならマイナスになる */
+const patternDelta = p => patternWorkMin(p) - BASE_MIN;
+
+/**
+ * 特別の日課の残高を、古い順に消費しながら計算する。
+ * 貯めた分は発生から8週間で失効する。
+ * 返り値の events は、日付順の増減の履歴。
+ */
+function dutyLedger(memberId, until){
+  const list = liveDuties()
+    .filter(d => d.memberId === memberId && (!until || d.date <= until))
+    .map(d => ({ d, p:patternById(d.patternId) }))
+    .filter(x => x.p)
+    .sort((a,b) => a.d.date.localeCompare(b.d.date));
+
+  const lots = [];          // 貯めた分（発生日・残り・期限）
+  const events = [];        // 日付ごとの増減の記録
+  const expire = onDate => {
+    let lost = 0;
+    for(const lot of lots){
+      if(lot.remain > 0 && lot.expiry < onDate){ lost += lot.remain; lot.remain = 0; }
+    }
+    return lost;
+  };
+
+  for(const x of list){
+    const delta = patternDelta(x.p);
+    const lost = expire(x.d.date);          // その日より前に期限が来た分を先に失効させる
+    if(lost) events.push({ date:x.d.date, type:"expire", min:-lost });
+
+    if(delta > 0){
+      lots.push({ date:x.d.date, remain:delta, expiry:toDateStr(addDays(parseDate(x.d.date), DUTY_EXPIRE_DAYS)) });
+      events.push({ date:x.d.date, type:"earn", min:delta, duty:x.d, pattern:x.p });
+    }else if(delta < 0){
+      let need = -delta, used = 0;
+      for(const lot of lots){
+        if(need <= 0) break;
+        if(lot.remain <= 0 || lot.expiry < x.d.date) continue;
+        const take = Math.min(lot.remain, need);
+        lot.remain -= take; need -= take; used += take;
+      }
+      events.push({ date:x.d.date, type:"use", min:-used, short:need, duty:x.d, pattern:x.p });
+    }else{
+      events.push({ date:x.d.date, type:"none", min:0, duty:x.d, pattern:x.p });
+    }
+  }
+  /* 締め日時点で期限切れのものを落とす */
+  const endDate = until || toDateStr(startOfDay(new Date()));
+  const lost = expire(endDate);
+  if(lost) events.push({ date:endDate, type:"expire", min:-lost });
+
+  const balance = lots.reduce((a,l) => a + l.remain, 0);
+  return { balance, lots:lots.filter(l => l.remain > 0), events };
+}
+
+/** 期限が近い残高（既定で14日以内） */
+function expiringSoon(memberId, days = 14){
+  const led = dutyLedger(memberId);
+  const limit = toDateStr(addDays(startOfDay(new Date()), days));
+  return led.lots.filter(l => l.expiry <= limit)
+                 .reduce((a,l) => a + l.remain, 0);
+}
+
+/** 指定した年月の集計（繰越・付与・消費・失効・月末残高） */
+function dutyMonthly(memberId, year, month){
+  const first = new Date(year, month - 1, 1);
+  const last  = new Date(year, month, 0);
+  const prev  = toDateStr(addDays(first, -1));
+  const opening = dutyLedger(memberId, prev).balance;
+
+  const led = dutyLedger(memberId, toDateStr(last));
+  const inMonth = led.events.filter(e => e.date >= toDateStr(first) && e.date <= toDateStr(last));
+  const earn   = inMonth.filter(e => e.type === "earn").reduce((a,e) => a + e.min, 0);
+  const use    = inMonth.filter(e => e.type === "use").reduce((a,e) => a - e.min, 0);
+  const expired= inMonth.filter(e => e.type === "expire").reduce((a,e) => a - e.min, 0);
+  const shortage = inMonth.filter(e => e.type === "use").reduce((a,e) => a + (e.short || 0), 0);
+  return { opening, earn, use, expired, shortage, closing:led.balance };
+}
 
 /** 全体予定の期間（終了日は「その日いっぱい」なので翌日0時まで） */
 function eventSpan(e){
@@ -949,7 +1295,8 @@ function loadLocal(){
       if(typeof u.showList === "boolean") ui.showList = u.showList;
       if(typeof u.meId === "string") ui.meId = u.meId;
       if(typeof u.fileName === "string" && u.fileName.trim()) ui.fileName = u.fileName.trim();
-      if(u.screen === "certs" || u.screen === "gantt") ui.screen = u.screen;
+      if(["gantt","certs","duty","report"].includes(u.screen)) ui.screen = u.screen;
+      if(typeof u.dutyMonth === "string" && /^\d{4}-\d{2}$/.test(u.dutyMonth)) ui.dutyMonth = u.dutyMonth;
     }
   }catch(e){}
 }
@@ -1032,21 +1379,34 @@ function timelineWidth(tickCount){
 function render(){
   renderCertBanner();
 
-  /* 資格画面とスケジュール画面の切り替え */
-  const onCerts = ui.screen === "certs";
-  $("certScreen").hidden = !onCerts;
-  $("scroller").hidden = onCerts;
-  $("daylist").hidden = onCerts || $("daylist").hidden;
-  ["viewSeg","prevBtn","todayBtn","nextBtn","rangeLabel","addBtn"].forEach(id => { $(id).hidden = onCerts; });
+  /* 画面の切り替え（スケジュール／資格／特別の日課／月次報告） */
+  const onCerts  = ui.screen === "certs";
+  const onDuty   = ui.screen === "duty";
+  const onReport = ui.screen === "report";
+  const onGantt  = !onCerts && !onDuty && !onReport;
+
+  $("certScreen").hidden   = !onCerts;
+  $("dutyScreen").hidden   = !onDuty;
+  $("reportScreen").hidden = !onReport;
+  $("scroller").hidden = !onGantt;
+  if(!onGantt) $("daylist").hidden = true;
+
+  ["viewSeg","prevBtn","todayBtn","nextBtn","rangeLabel","addBtn","addEventBtn"]
+    .forEach(id => { $(id).hidden = !onGantt; });
   $("addTypeBtn").hidden = !onCerts;
+  ["patternBtn","bulkBtn","reportBtn"].forEach(id => { $(id).hidden = !onDuty; });
   $("certBtn").textContent = onCerts ? "🗓 スケジュール" : "🎓 資格";
   $("certBtn").classList.toggle("primary", onCerts);
-  $("addEventBtn").hidden = onCerts;
-  if(onCerts){
+  $("dutyBtn").textContent = (onDuty || onReport) ? "🗓 スケジュール" : "🕐 特日課";
+  $("dutyBtn").classList.toggle("primary", onDuty || onReport);
+
+  if(!onGantt){
     $("listBtn").hidden = true;
     $("evlist").hidden = true;
     document.body.classList.remove("has-list");
-    renderCertScreen();
+    if(onCerts) renderCertScreen();
+    if(onDuty) renderDutyScreen();
+    if(onReport) renderReport();
     return;
   }
 
@@ -1155,6 +1515,8 @@ function render(){
 
     /* 全体予定の期間を背景に敷く（誰が抜けるか個人の予定と重ねて見えるように） */
     paintEventBands(lanes, ev.placed, pct);
+    /* 特別の日課で決まった勤務時間の枠を描く（作業データとしては保存しない） */
+    paintDutyFrames(lanes, row.id, range, pct);
 
     /* 背景（土日の色分け＋区切り線） */
     ticks.forEach(t => {
@@ -1312,6 +1674,468 @@ function renderDayList(range){
     }
     col.appendChild(ul);
     grid.appendChild(col);
+  }
+}
+
+/* =========================================================================
+   特別の日課（7時間45分を超えた分を貯めて、後日消費する）
+   ========================================================================= */
+/** 表示中の月の日付一覧 */
+function dutyMonthDays(){
+  const a = parseDate(ui.dutyMonth + "-01") || startOfDay(new Date());
+  const y = a.getFullYear(), m = a.getMonth();
+  const days = [];
+  for(let d = 1; d <= new Date(y, m+1, 0).getDate(); d++) days.push(new Date(y, m, d));
+  return { year:y, month:m+1, days };
+}
+
+function renderDutyScreen(){
+  const { year, month, days } = dutyMonthDays();
+  $("dMonth").textContent = `${year}年${month}月`;
+  $("dLegend").innerHTML = DUTY_KINDS.map(k =>
+    `<span><span class="sw" style="background:${k.color}"></span>${k.name}</span>`).join("")
+    + `<span>基準 ${fmtMin(BASE_MIN)}／期限 8週間</span>`;
+
+  const table = $("dutyTable");
+  const members = liveMembers();
+  const patterns = liveDutyPatterns();
+  table.innerHTML = "";
+
+  if(!patterns.length){
+    table.innerHTML = `<tbody><tr><td style="padding:26px;color:var(--muted);border:0;text-align:left;">
+      まず「パターン台帳」から、LONG／SHORT の勤務パターンを登録してください。</td></tr></tbody>`;
+    renderDutyWarnings();
+    return;
+  }
+
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  hr.innerHTML = `<th class="mem">メンバー</th>`
+    + days.map(d => `<th class="${d.getDay()===0?"sun":d.getDay()===6?"sat":""}">`
+        + `${d.getDate()}<br>${WD[d.getDay()]}</th>`).join("")
+    + `<th class="total">当月<br>付与</th><th class="total">当月<br>消費</th><th class="total">月末<br>残高</th>`;
+  thead.appendChild(hr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for(const m of members){
+    const tr = document.createElement("tr");
+    if(m.id === ui.meId) tr.className = "me";
+    const td = document.createElement("td");
+    td.className = "mem"; td.textContent = m.name;
+    tr.appendChild(td);
+
+    for(const d of days){
+      const ds = toDateStr(d);
+      const cell = document.createElement("td");
+      cell.className = d.getDay()===0 ? "sun" : d.getDay()===6 ? "sat" : "";
+      const duty = dutyOf(m.id, ds);
+      const p = duty && patternById(duty.patternId);
+      const btn = document.createElement("button");
+      btn.className = "dcell" + (p ? " set" : "");
+      btn.textContent = p ? p.code : "・";
+      if(p){
+        btn.style.background = dutyKindOf(p.kind).color;
+        btn.title = `${p.code} ${p.name}\n${p.start}〜${p.end}（休憩${p.breakMin}分）\n`
+          + `実働 ${fmtMin(patternWorkMin(p))}／${fmtMin(patternDelta(p), true)}`;
+      }else{
+        btn.title = `${m.name} ${month}/${d.getDate()}`;
+      }
+      btn.addEventListener("click", () => openDuty(m.id, ds));
+      cell.appendChild(btn);
+      tr.appendChild(cell);
+    }
+
+    const s = dutyMonthly(m.id, year, month);
+    const cellFor = (v, cls) => {
+      const c = document.createElement("td");
+      c.className = "total" + (cls ? " " + cls : "");
+      c.innerHTML = v;
+      return c;
+    };
+    tr.appendChild(cellFor(s.earn ? `<span class="plus">${fmtMin(s.earn, true)}</span>` : "–"));
+    tr.appendChild(cellFor(s.use ? `<span class="minus">-${fmtMin(s.use)}</span>` : "–"));
+    tr.appendChild(cellFor(
+      `<span class="${s.closing < 0 ? "minus" : ""}">${fmtMin(s.closing)}</span>`
+      + (s.shortage ? ` <span class="minus">(不足${fmtMin(s.shortage)})</span>` : ""), "bal"));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  renderDutyWarnings();
+}
+
+/** 失効間近・消費不足の警告 */
+function renderDutyWarnings(){
+  const box = $("dutyWarn");
+  box.innerHTML = "";
+  const { year, month } = dutyMonthDays();
+  for(const m of liveMembers()){
+    const soon = expiringSoon(m.id, 14);
+    if(soon > 0){
+      box.insertAdjacentHTML("beforeend",
+        `<div class="dwarn">⚠ <strong>${esc(m.name)}</strong>：あと14日以内に失効する残高が`
+        + ` <strong>${fmtMin(soon)}</strong> あります。SHORT勤務での消費をご検討ください。</div>`);
+    }
+    const s = dutyMonthly(m.id, year, month);
+    if(s.shortage > 0){
+      box.insertAdjacentHTML("beforeend",
+        `<div class="dwarn bad">⚠ <strong>${esc(m.name)}</strong>：残高が足りないまま`
+        + ` <strong>${fmtMin(s.shortage)}</strong> 分の消費が入力されています。割当をご確認ください。</div>`);
+    }
+    if(s.expired > 0){
+      box.insertAdjacentHTML("beforeend",
+        `<div class="dwarn bad">⚠ <strong>${esc(m.name)}</strong>：今月 <strong>${fmtMin(s.expired)}</strong>`
+        + ` が期限切れで失効しました。</div>`);
+    }
+  }
+}
+
+/* --- 1日ぶんの割当 --- */
+let editingDuty = null;
+function openDuty(memberId, date){
+  const m = liveMembers().find(x => x.id === memberId);
+  if(!m) return;
+  editingDuty = { memberId, date };
+  const cur = dutyOf(memberId, date);
+  const d = parseDate(date);
+  $("dutyWho").innerHTML = `<strong>${esc(m.name)}</strong>　／　`
+    + `${d.getMonth()+1}月${d.getDate()}日（${WD[d.getDay()]}）`;
+  $("dutyErr").textContent = "";
+  $("dutyClear").hidden = !cur;
+
+  const box = $("dutyPick");
+  box.innerHTML = "";
+  for(const p of liveDutyPatterns()){
+    const b = document.createElement("label");
+    b.style.cursor = "pointer";
+    b.innerHTML = `<span class="sw" style="width:10px;height:10px;border-radius:3px;`
+      + `background:${dutyKindOf(p.kind).color};flex:none;"></span>`
+      + `<span><strong>${esc(p.code)}</strong> ${esc(p.name)}`
+      + `<span style="color:var(--muted);font-size:11px;"> ${esc(p.start)}〜${esc(p.end)}　`
+      + `${fmtMin(patternDelta(p), true)}</span></span>`;
+    if(cur && cur.patternId === p.id) b.style.background = "#eef3ff";
+    b.addEventListener("click", () => setDuty(memberId, date, p.id));
+    box.appendChild(b);
+  }
+  $("dutyMask").hidden = false;
+}
+function setDuty(memberId, date, patternId){
+  const now = Date.now();
+  const cur = dutyOf(memberId, date);
+  if(cur){ cur.patternId = patternId; cur.updatedAt = now; }
+  else state.duties.push({ id:uid(), memberId, date, patternId, note:"", deleted:false, updatedAt:now });
+  $("dutyMask").hidden = true;
+  editingDuty = null;
+  changed();
+}
+function clearDuty(){
+  if(!editingDuty) return;
+  const cur = dutyOf(editingDuty.memberId, editingDuty.date);
+  if(cur){ cur.deleted = true; cur.updatedAt = Date.now(); }
+  $("dutyMask").hidden = true;
+  editingDuty = null;
+  changed();
+}
+
+/* --- パターン台帳 --- */
+function renderPatterns(){
+  const table = $("patTable");
+  const list = liveDutyPatterns();
+  table.innerHTML = `<thead><tr>
+    <th>コード</th><th>名称</th><th>区分</th><th>開始</th><th>終了</th>
+    <th>休憩</th><th>実働</th><th>増減</th><th></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  if(!list.length){
+    tbody.innerHTML = `<tr><td colspan="9" style="padding:20px;color:var(--muted);">
+      パターンがありません。下の「＋ パターンを追加」から登録してください。</td></tr>`;
+  }
+  for(const p of list){
+    const tr = document.createElement("tr");
+    const mk = (val, onChange, width) => {
+      const i = document.createElement("input");
+      i.value = val; i.style.width = width; i.style.padding = "4px 6px";
+      i.style.border = "1px solid var(--line-strong)"; i.style.borderRadius = "4px";
+      i.style.font = "inherit"; i.style.fontSize = "12px";
+      i.addEventListener("change", () => onChange(i));
+      return i;
+    };
+    const cell = el => { const td = document.createElement("td"); td.appendChild(el); return td; };
+
+    tr.appendChild(cell(mk(p.code, i => { p.code = i.value.trim(); p.updatedAt = Date.now(); changed(); renderPatterns(); }, "60px")));
+    tr.appendChild(cell(mk(p.name, i => { p.name = i.value.trim(); p.updatedAt = Date.now(); changed(); }, "130px")));
+
+    const sel = document.createElement("select");
+    sel.style.font = "inherit"; sel.style.fontSize = "12px";
+    DUTY_KINDS.forEach(k => {
+      const o = document.createElement("option");
+      o.value = k.id; o.textContent = k.name; o.selected = k.id === p.kind;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", () => { p.kind = sel.value; p.updatedAt = Date.now(); changed(); renderPatterns(); });
+    tr.appendChild(cell(sel));
+
+    const upd = () => { p.updatedAt = Date.now(); changed(); renderPatterns(); };
+    tr.appendChild(cell(mk(p.start, i => { if(parseHM(i.value)!==null){ p.start=i.value; upd(); } else i.value=p.start; }, "58px")));
+    tr.appendChild(cell(mk(p.end,   i => { if(parseHM(i.value)!==null){ p.end=i.value;   upd(); } else i.value=p.end;   }, "58px")));
+    tr.appendChild(cell(mk(String(p.breakMin), i => {
+      const v = parseInt(i.value,10);
+      if(Number.isFinite(v) && v>=0){ p.breakMin=v; upd(); } else i.value=String(p.breakMin);
+    }, "46px")));
+
+    const w = document.createElement("td"); w.textContent = fmtMin(patternWorkMin(p)); tr.appendChild(w);
+    const dl = document.createElement("td");
+    const delta = patternDelta(p);
+    dl.innerHTML = `<span class="${delta>0?"plus":delta<0?"minus":""}">${fmtMin(delta, true)}</span>`;
+    tr.appendChild(dl);
+
+    const del = document.createElement("button");
+    del.className = "btn danger"; del.textContent = "削除"; del.style.fontSize = "11px";
+    del.addEventListener("click", () => {
+      const n = liveDuties().filter(d => d.patternId === p.id).length;
+      if(!confirm(`「${p.code} ${p.name}」を削除しますか？`
+        + (n ? `\nこのパターンの割当 ${n}件も削除されます。` : ""))) return;
+      const now = Date.now();
+      p.deleted = true; p.updatedAt = now;
+      liveDuties().filter(d => d.patternId === p.id).forEach(d => { d.deleted = true; d.updatedAt = now; });
+      changed(); renderPatterns();
+    });
+    tr.appendChild(cell(del));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+}
+function addPattern(){
+  state.dutyPatterns.push({
+    id: uid(), code:"新規", name:"", kind:"long",
+    start:"08:00", end:"18:15", breakMin:60,
+    order: liveDutyPatterns().length, deleted:false, updatedAt:Date.now(),
+  });
+  changed(); renderPatterns();
+}
+
+/* --- まとめて割当 --- */
+function openBulk(){
+  const sel = $("bulkPattern");
+  sel.innerHTML = "";
+  for(const p of liveDutyPatterns()){
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = `${p.code} ${p.name}（${fmtMin(patternDelta(p), true)}）`;
+    sel.appendChild(o);
+  }
+  const { year, month, days } = dutyMonthDays();
+  $("bulkStart").value = toDateStr(days[0]);
+  $("bulkEnd").value = toDateStr(days[days.length-1]);
+  $("bulkErr").textContent = "";
+
+  const dows = $("bulkDows");
+  dows.innerHTML = "";
+  dows.style.display = "flex";
+  dows.style.flexWrap = "wrap";
+  dows.style.gap = "10px";
+  WD.forEach((w,i) => {
+    const l = document.createElement("label");
+    l.style.borderTop = "0";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = String(i); cb.dataset.dow = "1";
+    const sp = document.createElement("span"); sp.textContent = w;
+    l.append(cb, sp);
+    dows.appendChild(l);
+  });
+
+  const box = $("bulkMembers");
+  box.innerHTML = "";
+  for(const m of liveMembers()){
+    const l = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = m.id;
+    cb.checked = m.id === ui.meId;
+    cb.addEventListener("change", updateBulkCount);
+    const sp = document.createElement("span"); sp.textContent = m.name;
+    l.append(cb, sp);
+    box.appendChild(l);
+  }
+  updateBulkCount();
+  $("bulkMask").hidden = false;
+}
+const bulkChecks = () => [...$("bulkMembers").querySelectorAll("input")];
+function updateBulkCount(){
+  const n = bulkChecks().filter(c => c.checked).length;
+  $("bulkCount").textContent = n ? `${n}名` : "未選択";
+}
+/** まとめて割当の対象日を返す */
+function bulkTargets(){
+  const s = parseDate($("bulkStart").value), e = parseDate($("bulkEnd").value);
+  if(!s || !e || e < s) return null;
+  const dows = [...$("bulkDows").querySelectorAll("input:checked")].map(c => +c.value);
+  const days = [];
+  for(let d = s; d <= e; d = addDays(d, 1)){
+    if(dows.length && !dows.includes(d.getDay())) continue;
+    days.push(toDateStr(d));
+  }
+  const members = bulkChecks().filter(c => c.checked).map(c => c.value);
+  return { days, members };
+}
+function applyBulk(remove){
+  const t = bulkTargets();
+  const err = $("bulkErr");
+  if(!t){ err.textContent = "期間を正しく指定してください。"; return; }
+  if(!t.members.length){ err.textContent = "対象メンバーを選んでください。"; return; }
+  if(!t.days.length){ err.textContent = "対象の日がありません。"; return; }
+
+  const patternId = $("bulkPattern").value;
+  if(!remove && !patternId){ err.textContent = "パターンを選んでください。"; return; }
+  const n = t.members.length * t.days.length;
+  if(!confirm(remove
+    ? `${t.members.length}名 × ${t.days.length}日 の割当を消しますか？`
+    : `${t.members.length}名 × ${t.days.length}日（計${n}件）に割り当てますか？`)) return;
+
+  const now = Date.now();
+  for(const mid of t.members){
+    for(const date of t.days){
+      const cur = dutyOf(mid, date);
+      if(remove){
+        if(cur){ cur.deleted = true; cur.updatedAt = now; }
+      }else if(cur){
+        cur.patternId = patternId; cur.updatedAt = now;
+      }else{
+        state.duties.push({ id:uid(), memberId:mid, date, patternId, note:"", deleted:false, updatedAt:now });
+      }
+    }
+  }
+  $("bulkMask").hidden = true;
+  changed();
+}
+
+/* --- 月次報告 --- */
+function renderReport(){
+  const a = parseDate(ui.dutyMonth + "-01") || startOfDay(new Date());
+  const year = a.getFullYear(), month = a.getMonth() + 1;
+  $("rMonth").textContent = `${year}年${month}月`;
+
+  const members = liveMembers();
+  const rows = members.map(m => ({ m, s:dutyMonthly(m.id, year, month) }));
+  const sum = rows.reduce((a,r) => ({
+    opening:a.opening + r.s.opening, earn:a.earn + r.s.earn, use:a.use + r.s.use,
+    expired:a.expired + r.s.expired, closing:a.closing + r.s.closing,
+  }), { opening:0, earn:0, use:0, expired:0, closing:0 });
+
+  let html = `<p class="rtitle">特別の日課 取得状況報告　${year}年${month}月</p>`
+    + `<p class="rsub">基準勤務時間 ${fmtMin(BASE_MIN)}／取得期限 発生から8週間`
+    + `　作成日 ${toDateStr(startOfDay(new Date()))}</p>`
+    + `<table class="rtable"><thead><tr>`
+    + `<th>氏名</th><th>前月繰越</th><th>当月付与</th><th>当月取得</th>`
+    + `<th>失効</th><th>翌月繰越</th><th>LONG<br>日数</th><th>SHORT<br>日数</th></tr></thead><tbody>`;
+
+  for(const r of rows){
+    const days = liveDuties().filter(d => d.memberId === r.m.id && d.date.startsWith(`${year}-${pad(month)}`));
+    const nLong  = days.filter(d => { const p = patternById(d.patternId); return p && patternDelta(p) > 0; }).length;
+    const nShort = days.filter(d => { const p = patternById(d.patternId); return p && patternDelta(p) < 0; }).length;
+    html += `<tr><td class="nm">${esc(r.m.name)}</td>`
+      + `<td>${fmtMin(r.s.opening)}</td>`
+      + `<td>${r.s.earn ? fmtMin(r.s.earn) : "－"}</td>`
+      + `<td>${r.s.use ? fmtMin(r.s.use) : "－"}</td>`
+      + `<td>${r.s.expired ? fmtMin(r.s.expired) : "－"}</td>`
+      + `<td>${fmtMin(r.s.closing)}</td>`
+      + `<td>${nLong || "－"}</td><td>${nShort || "－"}</td></tr>`;
+  }
+  html += `</tbody><tfoot><tr><td class="nm">合計（${rows.length}名）</td>`
+    + `<td>${fmtMin(sum.opening)}</td><td>${fmtMin(sum.earn)}</td><td>${fmtMin(sum.use)}</td>`
+    + `<td>${fmtMin(sum.expired)}</td><td>${fmtMin(sum.closing)}</td><td></td><td></td>`
+    + `</tr></tfoot></table>`;
+
+  /* 明細（誰がいつ何を取得したか） */
+  html += `<div class="rdetail"><h3>取得明細</h3>`;
+  let any = false;
+  for(const r of rows){
+    const days = liveDuties()
+      .filter(d => d.memberId === r.m.id && d.date.startsWith(`${year}-${pad(month)}`))
+      .sort((a,b) => a.date.localeCompare(b.date));
+    if(!days.length) continue;
+    any = true;
+    html += `<h3>${esc(r.m.name)}</h3><table><thead><tr>`
+      + `<th>日付</th><th>曜日</th><th>パターン</th><th>勤務時間</th><th>実働</th><th>増減</th></tr></thead><tbody>`;
+    for(const d of days){
+      const p = patternById(d.patternId);
+      if(!p) continue;
+      const dt = parseDate(d.date);
+      html += `<tr><td>${esc(d.date)}</td><td>${WD[dt.getDay()]}</td>`
+        + `<td>${esc(p.code)} ${esc(p.name)}</td>`
+        + `<td>${esc(p.start)}〜${esc(p.end)}（休憩${p.breakMin}分）</td>`
+        + `<td>${fmtMin(patternWorkMin(p))}</td>`
+        + `<td>${fmtMin(patternDelta(p), true)}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+  if(!any) html += `<p class="rsub">この月の割当はありません。</p>`;
+  html += `</div>`;
+  $("reportBody").innerHTML = html;
+}
+
+function reportCsv(){
+  const a = parseDate(ui.dutyMonth + "-01") || startOfDay(new Date());
+  const year = a.getFullYear(), month = a.getMonth() + 1;
+  const q = v => `"${String(v).replace(/"/g,'""')}"`;
+  const lines = [
+    [`特別の日課 取得状況報告 ${year}年${month}月`],
+    [`基準勤務時間`, fmtMin(BASE_MIN), `取得期限`, `8週間`],
+    [],
+    ["氏名","前月繰越","当月付与","当月取得","失効","翌月繰越","LONG日数","SHORT日数"],
+  ];
+  for(const m of liveMembers()){
+    const s = dutyMonthly(m.id, year, month);
+    const days = liveDuties().filter(d => d.memberId === m.id && d.date.startsWith(`${year}-${pad(month)}`));
+    const nLong  = days.filter(d => { const p = patternById(d.patternId); return p && patternDelta(p) > 0; }).length;
+    const nShort = days.filter(d => { const p = patternById(d.patternId); return p && patternDelta(p) < 0; }).length;
+    lines.push([m.name, fmtMin(s.opening), fmtMin(s.earn), fmtMin(s.use),
+                fmtMin(s.expired), fmtMin(s.closing), nLong, nShort]);
+  }
+  lines.push([]);
+  lines.push(["取得明細"]);
+  lines.push(["氏名","日付","曜日","コード","名称","開始","終了","休憩(分)","実働","増減"]);
+  for(const m of liveMembers()){
+    const days = liveDuties()
+      .filter(d => d.memberId === m.id && d.date.startsWith(`${year}-${pad(month)}`))
+      .sort((a,b) => a.date.localeCompare(b.date));
+    for(const d of days){
+      const p = patternById(d.patternId);
+      if(!p) continue;
+      const dt = parseDate(d.date);
+      lines.push([m.name, d.date, WD[dt.getDay()], p.code, p.name, p.start, p.end,
+                  p.breakMin, fmtMin(patternWorkMin(p)), fmtMin(patternDelta(p), true)]);
+    }
+  }
+  /* Excel で開けるよう BOM を付ける */
+  const csv = "﻿" + lines.map(r => r.map(q).join(",")).join("\r\n");
+  const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
+  const el = document.createElement("a");
+  el.href = URL.createObjectURL(blob);
+  el.download = `特別の日課_${year}${pad(month)}.csv`;
+  el.click();
+  setTimeout(() => URL.revokeObjectURL(el.href), 1000);
+}
+
+/** 日・週表示に、その日の勤務時間の枠を描く */
+function paintDutyFrames(lanesEl, memberId, range, pct){
+  if(ui.view === "month") return;
+  for(let d = startOfDay(range.start); d < range.end; d = addDays(d, 1)){
+    const duty = dutyOf(memberId, toDateStr(d));
+    const p = duty && patternById(duty.patternId);
+    if(!p) continue;
+    const s = parseHM(p.start), e = parseHM(p.end);
+    const from = d.getTime() + s * 60000;
+    const to   = d.getTime() + (e > s ? e : e + 1440) * 60000;
+    const left  = Math.max(0, pct(from));
+    const right = Math.min(100, pct(to));
+    if(right <= left) continue;
+    const fr = document.createElement("div");
+    fr.className = "dutyframe";
+    fr.style.left = left + "%";
+    fr.style.width = (right - left) + "%";
+    fr.style.borderColor = dutyKindOf(p.kind).color;
+    fr.title = `${p.code} ${p.name}　${p.start}〜${p.end}　${fmtMin(patternDelta(p), true)}`;
+    fr.innerHTML = `<span>${esc(p.code)} ${fmtMin(patternDelta(p), true)}</span>`;
+    lanesEl.appendChild(fr);
   }
 }
 
@@ -2503,6 +3327,33 @@ const HELP_HTML = `
   <li><kbd>Esc</kbd> でダイアログを閉じます。</li>
 </ul>
 
+<p><strong>特別の日課（🕐 特日課）</strong></p>
+<ul>
+  <li>1日の勤務時間 <strong>7時間45分</strong>を超えた分を貯め、SHORT勤務の日に消費する取り組みを管理します。
+      取得期限は<strong>発生から8週間</strong>で、<strong>古い分から順に消費</strong>します。</li>
+  <li>まず「<strong>パターン台帳</strong>」に LONG／SHORT の勤務パターンを登録します。
+      勤務時間と休憩を入れると、7時間45分との差（増減）が<strong>自動で計算</strong>されます。</li>
+  <li>割当画面は<strong>縦がメンバー、横が日付</strong>です。セルをクリックしてパターンを選びます。
+      右端に当月の付与・消費・月末残高が出ます。</li>
+  <li>「<strong>まとめて割当</strong>」で、複数人 × 期間（曜日でしぼる指定も可）に一度に割り当てられます。</li>
+  <li>失効が近い残高（14日以内）や、残高不足のまま消費が入力されている場合は<strong>警告</strong>が出ます。</li>
+</ul>
+
+<p><strong>月次報告</strong></p>
+<ul>
+  <li>特日課の画面から「<strong>月次報告</strong>」を押すと、そのまま提出できる一覧表を作ります。</li>
+  <li>メンバーごとに <strong>前月繰越／当月付与／当月取得／失効／翌月繰越／LONG日数／SHORT日数</strong>を並べ、
+      合計行と<strong>取得明細</strong>（誰がいつどのパターンか）を付けます。</li>
+  <li><strong>CSVで書き出す</strong>（Excelでそのまま開けます）と<strong>印刷する</strong>に対応しています。</li>
+</ul>
+
+<p><strong>日表示・週表示への自動反映</strong></p>
+<ul>
+  <li>割り当てたパターンの勤務時間が、日表示・週表示の各メンバー行に<strong>破線の枠</strong>で出ます
+      （「L1 +1:30」のようにコードと増減つき）。</li>
+  <li>作業データとしては保存していないため、<strong>パターン台帳を直せば全員の表示が一斉に直ります</strong>。</li>
+</ul>
+
 <p><strong>全体予定（長期出張・訓練・来訪など）</strong></p>
 <ul>
   <li>個人の作業とは別に、<strong>チーム全体で把握したい予定</strong>を登録できます。
@@ -2669,6 +3520,49 @@ function init(){
     ui.screen = ui.screen === "certs" ? "gantt" : "certs";
     saveLocal(); render();
   });
+
+  /* --- 特別の日課 --- */
+  const goto = s => { ui.screen = s; saveLocal(); render(); };
+  const moveDutyMonth = n => {
+    const a = parseDate(ui.dutyMonth + "-01") || startOfDay(new Date());
+    const d = addMonths(a, n);
+    ui.dutyMonth = `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+    saveLocal(); render();
+  };
+  const thisMonth = () => {
+    const n = new Date();
+    ui.dutyMonth = `${n.getFullYear()}-${pad(n.getMonth()+1)}`;
+    saveLocal(); render();
+  };
+  $("dutyBtn").addEventListener("click", () =>
+    goto((ui.screen === "duty" || ui.screen === "report") ? "gantt" : "duty"));
+  $("dPrev").addEventListener("click", () => moveDutyMonth(-1));
+  $("dNext").addEventListener("click", () => moveDutyMonth(1));
+  $("dThis").addEventListener("click", thisMonth);
+  $("rPrev").addEventListener("click", () => moveDutyMonth(-1));
+  $("rNext").addEventListener("click", () => moveDutyMonth(1));
+  $("rThis").addEventListener("click", thisMonth);
+  $("reportBtn").addEventListener("click", () => goto("report"));
+  $("rBack").addEventListener("click", () => goto("duty"));
+  $("rCsv").addEventListener("click", reportCsv);
+  $("rPrint").addEventListener("click", () => window.print());
+
+  $("dutyCancel").addEventListener("click", () => { $("dutyMask").hidden = true; editingDuty = null; });
+  $("dutyClear").addEventListener("click", clearDuty);
+
+  $("patternBtn").addEventListener("click", () => { renderPatterns(); $("patMask").hidden = false; });
+  $("patClose").addEventListener("click", () => { $("patMask").hidden = true; });
+  $("patAdd").addEventListener("click", addPattern);
+
+  $("bulkBtn").addEventListener("click", () => {
+    if(!liveDutyPatterns().length){ alert("先に「パターン台帳」からパターンを登録してください。"); return; }
+    openBulk();
+  });
+  $("bulkCancel").addEventListener("click", () => { $("bulkMask").hidden = true; });
+  $("bulkAll").addEventListener("click", () => { bulkChecks().forEach(c => c.checked = true); updateBulkCount(); });
+  $("bulkNone").addEventListener("click", () => { bulkChecks().forEach(c => c.checked = false); updateBulkCount(); });
+  $("bulkSave").addEventListener("click", () => applyBulk(false));
+  $("bulkDelete").addEventListener("click", () => applyBulk(true));
   $("addTypeBtn").addEventListener("click", addCertType);
   $("cExpiry").addEventListener("input", updateCertHint);
   $("cRenew").addEventListener("click", renewCert);
@@ -2715,9 +3609,9 @@ function init(){
 
   document.addEventListener("keydown", e => {
     if(e.key !== "Escape") return;
-    ["taskMask","memberMask","helpMask","setMask","certMask","eventMask"]
-      .forEach(id => { $(id).hidden = true; });
-    editingCert = null; editingEvent = null;
+    ["taskMask","memberMask","helpMask","setMask","certMask","eventMask",
+     "dutyMask","patMask","bulkMask"].forEach(id => { $(id).hidden = true; });
+    editingCert = null; editingEvent = null; editingDuty = null;
     editingId = null;
   });
 
