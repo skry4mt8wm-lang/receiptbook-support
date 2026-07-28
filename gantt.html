@@ -155,6 +155,19 @@
   .shade{position:absolute; top:0; bottom:0; pointer-events:none;}
   .shade.holiday{background:#fdf1f1;} .shade.saturday{background:#f2f6fd;}
 
+  /* 重ねて追加できる空き段の目印 */
+  .addhint{
+    position:absolute; left:6px; height:var(--lane-h); display:flex; align-items:center;
+    font-size:11px; color:#b0b6c0; pointer-events:none; opacity:0;
+    transition:opacity .12s; white-space:nowrap;
+  }
+  .row:hover .addhint{opacity:1;}
+  /* 段の区切り（何段に増えたか分かるように） */
+  .lanesep{
+    position:absolute; left:0; right:0; border-top:1px dashed #e7eaf0;
+    pointer-events:none;
+  }
+
   .bar{
     position:absolute; height:var(--lane-h); border-radius:5px; padding:0 8px;
     display:flex; align-items:center; gap:6px; overflow:hidden; white-space:nowrap;
@@ -1508,7 +1521,10 @@ function render(){
       else laneEnds[lane] = e;
       return { t, s, e, lane };
     });
-    const laneCount = Math.max(1, laneEnds.length);
+    /* 日表示では、いつでも重ねて入力できるよう空きの段を1つ余分に用意する。
+       業務が増えるとその人の行がそのぶん伸びていく。 */
+    const spare = (ui.view === "day" && row.id !== "__none__") ? 1 : 0;
+    const laneCount = Math.max(1, laneEnds.length + spare);
 
     const rowEl = document.createElement("div");
     const isMe = row.id === ui.meId;
@@ -1525,7 +1541,7 @@ function render(){
 
     const lanes = document.createElement("div");
     lanes.className = "lanes";
-    lanes.title = ui.view === "day"  ? "クリックでこの時間帯に作業を追加"
+    lanes.title = ui.view === "day"  ? "クリックでこの時間帯に作業を追加（重ねて入力できます）"
                 : ui.view === "week" ? "クリックでこの日の日表示へ"
                 :                      "ダブルクリックでこの週の週表示へ";
 
@@ -1576,8 +1592,26 @@ function render(){
         + (barPx >= needPx ? `<span class="h">${timeTxt}</span>` : "");
       bar.title = `${p.t.title || "(無題)"}\n${fmtYMD(sd)} ${fmtHM(sd)} 〜 ${fmtYMD(ed)} ${fmtHM(ed)}`
         + `\n担当: ${names.length ? names.join("、") : "未割当"}`
-        + (p.t.note ? `\n\n${p.t.note}` : "");
-      bar.addEventListener("click", ev => { ev.stopPropagation(); openTask(p.t.id); });
+        + (p.t.note ? `\n\n${p.t.note}` : "")
+        + (ui.view === "month" ? "" : "\n\nクリックで編集／ダブルクリックで重ねて追加");
+      /* クリックで編集。ただしダブルクリック（重ねて追加）と競合しないよう少し待つ */
+      if(row.id !== "__none__" && ui.view !== "month"){
+        let editTimer = null;
+        bar.addEventListener("click", ev => {
+          ev.stopPropagation();
+          clearTimeout(editTimer);
+          editTimer = setTimeout(() => openTask(p.t.id), 220);
+        });
+        bar.addEventListener("dblclick", ev => {
+          ev.stopPropagation();
+          clearTimeout(editTimer);
+          const rect = lanes.getBoundingClientRect();
+          const ratio = Math.min(Math.max((ev.clientX - rect.left) / rect.width, 0), 1);
+          openTask(null, row.id, new Date(rs + ratio * span));
+        });
+      }else{
+        bar.addEventListener("click", ev => { ev.stopPropagation(); openTask(p.t.id); });
+      }
       lanes.appendChild(bar);
     }
 
@@ -1593,12 +1627,32 @@ function render(){
         /* 日表示：空き部分クリックで、その時間帯に新規作成 */
         lanes.addEventListener("click", ev => openTask(null, row.id, posOf(ev)));
       }else if(ui.view === "week"){
-        /* 週表示：日のマスをクリックで、その日の日表示へ */
+        /* 週表示：日のマスをクリックで、その日の日表示へ。
+           バーの上のクリックは伝わってこないので、ここは即座に動かしてよい。 */
         lanes.addEventListener("click", ev => drillDown("day", posOf(ev), row.id));
       }else{
         /* 月表示：週のマスをダブルクリックで、その週の週表示へ */
         lanes.addEventListener("dblclick", ev => drillDown("week", posOf(ev), row.id));
       }
+    }
+
+    /* 2段以上になったら、段の区切りを薄く引く */
+    for(let i = 1; i < laneCount; i++){
+      const sep = document.createElement("div");
+      sep.className = "lanesep";
+      sep.style.top = (i * 26 + 2) + "px";
+      lanes.appendChild(sep);
+    }
+
+    /* 空きの段に「ここに重ねて追加できる」目印を出す（マウスを乗せたときだけ） */
+    if(spare){
+      const hint = document.createElement("div");
+      hint.className = "addhint";
+      hint.style.top = (laneEnds.length * 26 + 4) + "px";
+      hint.textContent = laneEnds.length
+        ? "＋ ここをクリックすると、同じ時間帯に重ねて追加できます"
+        : "＋ クリックして作業を追加";
+      lanes.appendChild(hint);
     }
 
     rowEl.appendChild(lanes);
@@ -3370,7 +3424,13 @@ const HELP_HTML = `
       移動した直後は、どの人の行だったか分かるように少しの間だけ光ります。</li>
   <li>日表示では、<strong>空いている所をクリック</strong>するとその時間帯に新規作成できます
       （週・月表示ではクリックが掘り下げになるため、追加は「＋ 新規作業」から行ってください）。</li>
-  <li>同じ時間に重なる作業は自動的に段組みで表示されます。</li>
+  <li><strong>同じ時間帯に何件でも重ねて入力できます。</strong>
+      作業が増えるとその人の行が下に伸びて段が増えます
+      （継続案件と突発の対応を並べて持てます）。</li>
+  <li>日表示では各行の一番下に<strong>空きの段</strong>が常にあります。
+      そこをクリックすると、既存の作業と<strong>同じ時間帯に重ねて</strong>追加できます。</li>
+  <li>バーで埋まっている所でも、<strong>バーをダブルクリック</strong>すればその時間帯に重ねて追加できます
+      （シングルクリックは従来どおり編集）。日表示・週表示のどちらでも使えます。</li>
   <li>時間軸の目盛りは、上段が <strong>${TZ_LETTER} TIME（このPCの時刻）</strong>、下段が小さく <strong>Z TIME（UTC）</strong> です。
       作業の入力画面でも、開始・終了の下に Z TIME を表示します（週/月表示や入力欄は <code>日日時時分分Z</code> の形式）。</li>
   <li><strong>週表示</strong>では、チャートの下にその週の作業が<strong>日ごとの文字一覧</strong>で並びます。
