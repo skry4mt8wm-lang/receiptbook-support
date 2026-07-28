@@ -189,16 +189,27 @@
   }
   .field textarea{resize:vertical; min-height:60px;}
   .zhint{font-size:11px; color:#9aa1ad; margin-top:4px; min-height:14px;}
-  .mefield{
-    background:#f4f7fd; border:1px solid #dde5f5; border-radius:8px;
-    padding:10px 12px; margin-bottom:14px;
+  /* ---------- 設定ダイアログ ---------- */
+  .setblock{
+    background:#f7f9fc; border:1px solid var(--line); border-radius:8px;
+    padding:12px 14px; margin-bottom:14px;
   }
-  .mefield label{display:block; font-size:12px; font-weight:600; margin-bottom:6px;}
-  .mefield select{
+  .setblock:last-child{margin-bottom:0;}
+  .setlabel{font-size:13px; font-weight:700; margin-bottom:8px;}
+  .setnow{
+    background:#fff; border:1px solid var(--line-strong); border-radius:6px;
+    padding:8px 10px; font-size:13px; margin-bottom:10px; word-break:break-all;
+  }
+  .setnow.on{border-color:#2fa84f; background:#f2fbf4;}
+  .setnow .sub{display:block; font-size:11px; color:var(--muted); margin-top:3px;}
+  .setrow{display:flex; gap:8px; flex-wrap:wrap;}
+  .setblock select, .setblock input[type=text], .setblock #fileNameInput{
     width:100%; padding:7px 9px; border:1px solid var(--line-strong);
     border-radius:6px; font:inherit; background:#fff;
   }
-  .mefield .note{margin:8px 0 0;}
+  .setblock .note{margin:10px 0 0;}
+  .fallback{margin-top:12px; border-top:1px solid var(--line); padding-top:10px;}
+  .fallback summary{font-size:12px; color:var(--muted); cursor:pointer;}
   .two{display:flex; gap:10px;} .two>*{flex:1;}
   .field label .pick{float:right; display:flex; gap:6px; align-items:center;}
   .field label .pick button{
@@ -261,8 +272,7 @@
   <div class="sync">
     <span class="dot" id="syncDot"></span>
     <span id="syncText">未接続（この端末に保存中）</span>
-    <button class="btn" id="openBtn">共有ファイルを開く</button>
-    <button class="btn" id="newFileBtn">新規作成</button>
+    <button class="btn" id="settingsBtn">⚙ 設定</button>
     <button class="btn" id="saveBtn">保存</button>
     <button class="btn" id="helpBtn" title="使い方">?</button>
   </div>
@@ -339,14 +349,6 @@
   <div class="modal">
     <h2>メンバー管理</h2>
     <div class="body">
-      <div class="mefield">
-        <label for="meSel">このPCで入力する人</label>
-        <select id="meSel"></select>
-        <p class="note">
-          新しい作業の担当者に最初から選ばれ、一覧でもその人の行が目立つようになります。
-          この設定はこのPCだけのもので、書き出すJSONには含まれません。
-        </p>
-      </div>
       <ul class="mlist" id="memberList"></ul>
       <div class="two" style="margin-top:12px;">
         <input id="newMember" placeholder="新しいメンバー名" style="padding:7px 9px;border:1px solid var(--line-strong);border-radius:6px;font:inherit;">
@@ -359,6 +361,52 @@
     <div class="foot">
       <span class="spacer"></span>
       <button class="btn primary" id="memberClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== settings modal ===== -->
+<div class="mask" id="setMask" hidden>
+  <div class="modal">
+    <h2>設定</h2>
+    <div class="body">
+      <div class="setblock">
+        <div class="setlabel">データを同期するフォルダ</div>
+        <div class="setnow" id="setNow">未設定</div>
+        <div class="setrow">
+          <button class="btn primary" id="folderBtn">同期フォルダを選ぶ…</button>
+          <button class="btn" id="disconnectBtn">同期をやめる</button>
+        </div>
+        <div class="field" style="margin-top:12px;">
+          <label for="fileNameInput">同期ファイル名</label>
+          <input id="fileNameInput" value="team-schedule.json">
+        </div>
+        <p class="note">
+          全員が<strong>同じフォルダ・同じファイル名</strong>を指定すると、約5秒ごとに自動で同期します。
+          フォルダの中にそのファイルが無ければ自動で作られるので、誰が最初でも構いません。
+        </p>
+        <details class="fallback">
+          <summary>フォルダを選べない場合はこちら</summary>
+          <div class="setrow" style="margin-top:10px;">
+            <button class="btn" id="openBtn">共有ファイルを開く</button>
+            <button class="btn" id="newFileBtn">新規作成</button>
+          </div>
+          <p class="note">フォルダではなく、ファイルを直接指定します。</p>
+        </details>
+      </div>
+
+      <div class="setblock">
+        <div class="setlabel">このPCで入力する人</div>
+        <select id="meSel"></select>
+        <p class="note">
+          新しい作業の担当者に最初から選ばれ、一覧でもその人の行が目立つようになります。
+          この設定はこのPCだけのもので、同期されるデータには含まれません。
+        </p>
+      </div>
+    </div>
+    <div class="foot">
+      <span class="spacer"></span>
+      <button class="btn primary" id="setClose">閉じる</button>
     </div>
   </div>
 </div>
@@ -443,7 +491,8 @@ const fmtYMD  = d => `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate(
    ========================================================================= */
 let state = { version:1, members:[], tasks:[] };
 /* ui はこのPC専用の設定。書き出すJSONには含めない（meId＝このPCで入力する人） */
-let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())), showList:true, meId:"" };
+let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())), showList:true, meId:"",
+           fileName:"team-schedule.json" };
 let dirty = false;              // ファイルに未保存の変更があるか
 let fileHandle = null;          // File System Access API のハンドル
 let lastFileModified = 0;       // 直近に読み込んだファイルの更新時刻
@@ -544,6 +593,7 @@ function loadLocal(){
       if(parseLocal(u.anchor)) ui.anchor = u.anchor;
       if(typeof u.showList === "boolean") ui.showList = u.showList;
       if(typeof u.meId === "string") ui.meId = u.meId;
+      if(typeof u.fileName === "string" && u.fileName.trim()) ui.fileName = u.fileName.trim();
     }
   }catch(e){}
 }
@@ -1112,7 +1162,7 @@ const fsaSupported = typeof window.showOpenFilePicker === "function";
 /* --- 選んだ共有ファイルを覚えておく（次回起動時に選び直さなくて済むように） ---
    ファイルハンドルは localStorage に入らないため IndexedDB を使う。
    file:// で開いた場合など IndexedDB が使えない環境では、静かにあきらめる。 */
-const IDB_NAME = "teamGantt", IDB_STORE = "handles", IDB_KEY = "shared";
+const IDB_NAME = "teamGantt", IDB_STORE = "handles", IDB_KEY = "shared", IDB_DIR = "dir";
 function idbOpen(){
   return new Promise((res, rej) => {
     const r = indexedDB.open(IDB_NAME, 1);
@@ -1121,29 +1171,113 @@ function idbOpen(){
     r.onerror   = () => rej(r.error);
   });
 }
-async function idbSet(v){
+async function idbSet(v, key = IDB_KEY){
   try{
     const db = await idbOpen();
     await new Promise((res, rej) => {
       const t = db.transaction(IDB_STORE, "readwrite");
-      t.objectStore(IDB_STORE).put(v, IDB_KEY);
+      t.objectStore(IDB_STORE).put(v, key);
       t.oncomplete = res; t.onerror = () => rej(t.error);
     });
   }catch(e){ /* 使えない環境では覚えないだけ */ }
 }
-async function idbGet(){
+async function idbGet(key = IDB_KEY){
   try{
     const db = await idbOpen();
     return await new Promise((res, rej) => {
       const t = db.transaction(IDB_STORE, "readonly");
-      const q = t.objectStore(IDB_STORE).get(IDB_KEY);
+      const q = t.objectStore(IDB_STORE).get(key);
       q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
     });
   }catch(e){ return null; }
 }
+async function idbDel(key){
+  try{
+    const db = await idbOpen();
+    await new Promise((res, rej) => {
+      const t = db.transaction(IDB_STORE, "readwrite");
+      t.objectStore(IDB_STORE).delete(key);
+      t.oncomplete = res; t.onerror = () => rej(t.error);
+    });
+  }catch(e){}
+}
 
 /** 再接続待ちのファイル（前回使った共有ファイル。権限の確認待ち） */
 let pendingHandle = null;
+/** 同期フォルダ（指定されていれば、この中の同期ファイルを使う） */
+let dirHandle = null;
+
+/** 同期に使うファイル名（このPCの設定） */
+function syncFileName(){
+  const v = (ui.fileName || "").trim();
+  return v || "team-schedule.json";
+}
+
+/** 権限を確認し、必要なら求める */
+async function ensurePermission(h){
+  if(!h || !h.queryPermission) return true;
+  let p = await h.queryPermission({ mode:"readwrite" });
+  if(p !== "granted" && h.requestPermission) p = await h.requestPermission({ mode:"readwrite" });
+  return p === "granted";
+}
+
+/** 同期フォルダを指定する（中の同期ファイルは無ければ自動で作る） */
+async function pickFolder(){
+  if(typeof window.showDirectoryPicker !== "function"){
+    alert(
+      "このブラウザではフォルダの指定が使えません。\n" +
+      "「フォルダを選べない場合はこちら」から、ファイルを直接指定してください。"
+    );
+    return;
+  }
+  try{
+    const dir = await window.showDirectoryPicker({ mode:"readwrite" });
+    if(!(await ensurePermission(dir))){
+      alert("フォルダへの書き込みが許可されませんでした。");
+      return;
+    }
+    const h = await dir.getFileHandle(syncFileName(), { create:true });
+    dirHandle = dir;
+    await idbSet(dir, IDB_DIR);
+    await connectHandle(h, false);
+    renderSettings();
+  }catch(e){
+    if(e && e.name === "AbortError") return;
+    setSync("err", "フォルダを設定できませんでした: " + (e && e.message ? e.message : e));
+    renderSettings();
+  }
+}
+
+/** 同期をやめて、このPCだけの保存に戻す */
+async function disconnectSync(){
+  if(fileHandle && !confirm("同期をやめますか？\n入力したデータはこのPCに残ります。")) return;
+  clearInterval(pollTimer);
+  clearTimeout(autoSaveTimer);
+  fileHandle = null; pendingHandle = null; dirHandle = null;
+  await idbDel(IDB_KEY); await idbDel(IDB_DIR);
+  refreshSyncLabel(); updateFileButtons(); renderSettings();
+}
+
+/** 設定ダイアログの表示を最新にする */
+function renderSettings(){
+  const now = $("setNow");
+  if(fileHandle){
+    now.className = "setnow on";
+    now.innerHTML = `✓ 同期中<span class="sub">`
+      + (dirHandle ? `フォルダ：${esc(dirHandle.name)} ／ ` : "")
+      + `ファイル：${esc(fileHandle.name)}</span>`;
+  }else if(pendingHandle){
+    now.className = "setnow";
+    now.innerHTML = `再接続が必要です<span class="sub">前回：${esc(pendingHandle.name)}`
+      + `／下のボタンを1回押してください</span>`;
+  }else{
+    now.className = "setnow";
+    now.innerHTML = `未設定<span class="sub">このPCだけに保存しています</span>`;
+  }
+  $("fileNameInput").value = syncFileName();
+  $("disconnectBtn").hidden = !fileHandle && !pendingHandle;
+  renderMeSelect();
+}
 
 function setSync(kind, text){
   const dot = $("syncDot");
@@ -1250,23 +1384,29 @@ async function createFile(){
 
 /** 接続状態に応じてボタンの文言と表示を切り替える */
 function updateFileButtons(){
-  const open = $("openBtn"), neu = $("newFileBtn");
+  const open = $("openBtn"), neu = $("newFileBtn"), folder = $("folderBtn");
   if(fileHandle){
     open.textContent = "別の共有ファイルを開く";
+    folder.textContent = "別のフォルダを選ぶ…";
     neu.hidden = true;
   }else if(pendingHandle){
     open.textContent = `「${pendingHandle.name}」に再接続`;
+    folder.textContent = "同期フォルダを選び直す…";
     neu.hidden = true;
   }else{
     open.textContent = "共有ファイルを開く";
+    folder.textContent = "同期フォルダを選ぶ…";
     neu.hidden = false;
   }
+  /* 設定ダイアログを開いている間は表示も追従させる */
+  if(!$("setMask").hidden) renderSettings();
 }
 
-/** 起動時：前回使った共有ファイルに自動でつなぎ直す */
+/** 起動時：前回指定したフォルダ／ファイルに自動でつなぎ直す */
 async function restoreHandle(){
+  try{ dirHandle = await idbGet(IDB_DIR) || null; }catch(e){ dirHandle = null; }
   const h = await idbGet();
-  if(!h) { updateFileButtons(); return; }
+  if(!h) { updateFileButtons(); renderSettings(); return; }
   try{
     const p = h.queryPermission ? await h.queryPermission({ mode:"readwrite" }) : "granted";
     if(p === "granted"){
@@ -1274,10 +1414,11 @@ async function restoreHandle(){
     }else{
       /* ブラウザの仕様で、再起動後は一度クリックしないと権限が戻らないことがある */
       pendingHandle = h;
-      setSync("dirty", `前回の「${h.name}」に未接続（ボタンで再接続）`);
+      setSync("dirty", `前回の「${h.name}」に未接続（設定から再接続）`);
       updateFileButtons();
     }
   }catch(e){ updateFileButtons(); }
+  renderSettings();
 }
 
 async function readFromFile(force){
@@ -1459,11 +1600,13 @@ const HELP_HTML = `
 
 <p><strong>共有フォルダでリアルタイムに同期する</strong></p>
 <ul>
-  <li><strong>最初の1人</strong>：「新規作成」を押し、共有フォルダを選んで <code>team-schedule.json</code> を作ります。</li>
-  <li><strong>他の全員</strong>：「共有ファイルを開く」を押し、共有フォルダのその <code>team-schedule.json</code> を選びます。</li>
+  <li><strong>全員が「⚙ 設定」→「同期フォルダを選ぶ…」で同じ共有フォルダを指定するだけ</strong>です。
+      フォルダの中に同期ファイルが無ければ自動で作られるので、誰が最初でも構いません。</li>
+  <li>用途ごとに分けたいときは「同期ファイル名」を変えられます（全員で同じ名前にしてください）。</li>
   <li>以降は<strong>自動で保存され、約5秒ごとに他の人の変更が反映</strong>されます。別の画面から戻ったときは即座に読み直します。</li>
-  <li>一度つなげば<strong>次回起動時は自動で同じファイルに再接続</strong>します。
-      ブラウザの仕様で許可が切れている場合は、ボタンが「◯◯に再接続」に変わるので1回押してください。</li>
+  <li>一度つなげば<strong>次回起動時は自動で同じフォルダに再接続</strong>します。
+      ブラウザの仕様で許可が切れている場合は「⚙ 設定」を開いて1回押し直してください。</li>
+  <li>同期をやめたいときは「⚙ 設定」→「同期をやめる」。データはこのPCに残ります。</li>
   <li>2台が同時に保存しても内容が消えないよう、<strong>読み込み後に手元だけにあるデータを自動で書き戻します</strong>。
       3台が同時に入力しても数秒で全員の画面が揃います。</li>
   <li>同じ作業を2人が同時に編集した場合のみ、<strong>後から保存した内容が残ります</strong>。</li>
@@ -1557,8 +1700,29 @@ function init(){
   $("addMember").addEventListener("click", addMemberFromInput);
   $("newMember").addEventListener("keydown", e => { if(e.key === "Enter") addMemberFromInput(); });
 
+  $("settingsBtn").addEventListener("click", () => {
+    renderSettings(); $("setMask").hidden = false;
+  });
+  $("setClose").addEventListener("click", () => { $("setMask").hidden = true; });
+  $("folderBtn").addEventListener("click", pickFolder);
+  $("disconnectBtn").addEventListener("click", disconnectSync);
   $("openBtn").addEventListener("click", pickFile);
   $("newFileBtn").addEventListener("click", createFile);
+
+  /* 同期ファイル名を変えたら、同じフォルダの別ファイルにつなぎ直す */
+  $("fileNameInput").addEventListener("change", async e => {
+    let v = e.target.value.trim().replace(/[\\/:*?"<>|]/g, "");
+    if(!v) v = "team-schedule.json";
+    if(!/\.json$/i.test(v)) v += ".json";
+    ui.fileName = v; saveLocal();
+    if(dirHandle){
+      try{
+        const h = await dirHandle.getFileHandle(v, { create:true });
+        await connectHandle(h, false);
+      }catch(err){ setSync("err", "ファイルを切り替えられませんでした: " + (err.message || err)); }
+    }
+    renderSettings();
+  });
 
   /* 別の画面から戻ってきたら、5秒を待たずにすぐ読み直す */
   document.addEventListener("visibilitychange", () => { if(!document.hidden) pollOnce(); });
@@ -1575,7 +1739,7 @@ function init(){
 
   document.addEventListener("keydown", e => {
     if(e.key !== "Escape") return;
-    ["taskMask","memberMask","helpMask"].forEach(id => { $(id).hidden = true; });
+    ["taskMask","memberMask","helpMask","setMask"].forEach(id => { $(id).hidden = true; });
     editingId = null;
   });
 
