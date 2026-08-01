@@ -8,7 +8,7 @@
 |---|---|
 | `gantt.html` | **本体。これが製品そのもの**。単一HTMLファイルで完結 |
 | `GANTT-README.md` | 利用者向けの説明書（日本語） |
-| `tests/` | Playwright による実ブラウザテスト（242項目） |
+| `tests/` | Playwright による実ブラウザテスト（268項目） |
 | `index.html` | 無関係な別プロジェクト（ReceiptBook のサポートページ）。触らない |
 
 ## 何を作っているか
@@ -99,7 +99,7 @@ ui = { view, anchor, showList, meId, fileName, screen, dutyMonth }
 
 ```
 npm install playwright     # 初回のみ
-node tests/run-all.js      # 242項目
+node tests/run-all.js      # 268項目
 ```
 
 変更したら関連するテストを実行し、**新しい機能にはテストを足す**。

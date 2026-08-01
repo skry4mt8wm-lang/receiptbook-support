@@ -398,11 +398,42 @@
   .rdetail table{border-collapse:collapse; font-size:11px;}
   .rdetail th, .rdetail td{border:1px solid var(--line); padding:3px 7px;}
 
+  /* ---------- 帳票（特別の日課指定・勤務計画表） ---------- */
+  .formsheet{background:#fff; color:#000; padding:6px 4px 18px;}
+  .fm-head{display:flex; justify-content:flex-end; margin-bottom:6px;}
+  .fm-unit{font-size:14px; font-weight:700; margin-right:16px; align-self:flex-end;}
+  .fm-meta{border-collapse:collapse; font-size:11px;}
+  .fm-meta td{padding:1px 6px; white-space:nowrap;}
+  .fm-meta td:nth-child(odd){text-align:right; color:#333;}
+  .fm-legend{
+    border:1px solid #000; padding:5px 8px; font-size:10px; line-height:1.5;
+    width:max-content; max-width:60%; margin:0 0 8px auto; white-space:pre-wrap;
+  }
+  .fm-title{text-align:center; font-size:15px; font-weight:700; margin:6px 0 10px; line-height:1.7;}
+  .fm-title .fm-sub{font-size:13px; font-weight:400;}
+
+  .fmtable{border-collapse:collapse; margin:0 auto; font-size:11px;}
+  .fmtable th, .fmtable td{
+    border:1px solid #555; padding:2px 1px; text-align:center;
+    min-width:22px; height:24px;
+  }
+  .fmtable th.rk, .fmtable td.rk{min-width:34px; white-space:nowrap;}
+  .fmtable th.nm, .fmtable td.nm{
+    min-width:96px; text-align:left; padding-left:6px; white-space:nowrap;
+  }
+  .fmtable th.sun, .fmtable td.sun, .fmtable th.sat{color:#c00;}
+  .fmtable tbody td{font-size:11px;}
+  .summary-sheet{margin-top:26px;}
+
   @media print{
+    @page{size:A4 landscape; margin:8mm;}
     header, .dutybar, .noprint, #certBanner{display:none !important;}
     #reportScreen{overflow:visible; padding:0;}
-    .rtable{font-size:10pt;}
+    .rtable{font-size:9pt;}
     body{background:#fff;}
+    .formsheet{padding:0;}
+    .summary-sheet{break-before:page;}
+    .rdetail{break-before:page;}
   }
 
   /* ---------- 設定ダイアログ ---------- */
@@ -451,6 +482,7 @@
 
   .mlist{list-style:none; margin:0; padding:0;}
   .mlist li{display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line);}
+  .mlist .rankinput{flex:0 0 58px; min-width:58px;}
   .mlist input{flex:1; padding:6px 8px; border:1px solid var(--line-strong); border-radius:6px; font:inherit;}
   .mlist .ord{display:flex; gap:2px;}
   .mlist .ord button, .mlist .del{
@@ -529,6 +561,7 @@
     <button class="btn" id="rNext">▶</button>
     <span class="range-label" id="rMonth"></span>
     <span class="spacer"></span>
+    <button class="btn" id="fmBtn">帳票の設定</button>
     <button class="btn" id="rCsv">CSVで書き出す</button>
     <button class="btn" id="rPrint">印刷する</button>
     <button class="btn primary" id="rBack">割当画面に戻る</button>
@@ -626,6 +659,38 @@
     <div class="foot">
       <span class="spacer"></span>
       <button class="btn primary" id="memberClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 帳票の設定 modal ===== -->
+<div class="mask" id="fmMask" hidden>
+  <div class="modal">
+    <h2>帳票の設定</h2>
+    <div class="body">
+      <p class="note">月次報告に印字する項目です。空欄のままでも印刷できます。</p>
+      <div class="field"><label for="fmTitle">表題</label><input id="fmTitle"></div>
+      <div class="field"><label for="fmUnit">部隊名（　　　）に入れる文字</label><input id="fmUnit"></div>
+      <div class="field"><label for="fmHeaderUnit">右上の隊名</label><input id="fmHeaderUnit"></div>
+      <div class="two">
+        <div class="field"><label for="fmDoc">文書管理者</label><input id="fmDoc"></div>
+        <div class="field"><label for="fmKeep">保存期間</label><input id="fmKeep"></div>
+      </div>
+      <div class="two">
+        <div class="field"><label for="fmUntil">保存期限満了日</label><input id="fmUntil"></div>
+        <div class="field"><label for="fmSheets">枚数</label><input id="fmSheets"></div>
+      </div>
+      <div class="field"><label for="fmDist">配布先</label><input id="fmDist"></div>
+      <div class="field">
+        <label for="fmLegend">記載要領（欄外の枠に印字。改行できます）</label>
+        <textarea id="fmLegend" rows="5"></textarea>
+      </div>
+      <p class="note">この設定は全員に同期されます。</p>
+    </div>
+    <div class="foot">
+      <span class="spacer"></span>
+      <button class="btn" id="fmCancel">キャンセル</button>
+      <button class="btn primary" id="fmSave">保存</button>
     </div>
   </div>
 </div>
@@ -886,6 +951,22 @@ const DUTY_KINDS = [
   { id:"normal", name:"通常",   color:"#94a3b8" },
 ];
 const dutyKindOf = id => DUTY_KINDS.find(k => k.id === id) || DUTY_KINDS[2];
+
+/* 帳票「特別の日課指定・勤務計画表」に印字する項目。すべて設定画面から変更できる */
+const REPORT_DEFAULT = {
+  title: "特別の日課指定・勤務計画表",
+  unitName: "",        // 部隊名（　　　）に入る
+  headerUnit: "",      // 右上の隊名
+  docManager: "",      // 文書管理者
+  keepYears: "",       // 保存期間
+  keepUntil: "",       // 保存期限満了日
+  sheets: "",          // 枚数
+  distribution: "",    // 配布先
+  legend: "",          // 欄外の記載要領
+  updatedAt: 0,
+};
+/** 西暦から和暦（令和）の年を出す */
+const reiwa = y => y - 2018;
 const LS_KEY = "teamGantt.data.v1";
 const LS_UI  = "teamGantt.ui.v1";
 const DAY_MS = 86400000;
@@ -982,7 +1063,7 @@ const fmtYMD  = d => `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate(
    状態
    ========================================================================= */
 let state = { version:1, members:[], tasks:[], certTypes:[], certs:[], events:[],
-              dutyPatterns:[], duties:[] };
+              dutyPatterns:[], duties:[], report:{ ...REPORT_DEFAULT } };
 /* ui はこのPC専用の設定。書き出すJSONには含めない（meId＝このPCで入力する人） */
 let ui = { view:"week", anchor:toLocalStr(startOfDay(new Date())), showList:true, meId:"",
            fileName:"team-schedule.json", screen:"gantt",
@@ -1003,8 +1084,17 @@ const $ = id => document.getElementById(id);
    ========================================================================= */
 function normalize(raw){
   const out = { version:1, members:[], tasks:[], certTypes:[], certs:[], events:[],
-                dutyPatterns:[], duties:[] };
+                dutyPatterns:[], duties:[], report:{ ...REPORT_DEFAULT } };
   if(!raw || typeof raw !== "object") return out;
+
+  /* 帳票（特別の日課指定・勤務計画表）の記載事項。全員で共通なので同期する */
+  if(raw.report && typeof raw.report === "object"){
+    for(const k of Object.keys(REPORT_DEFAULT)){
+      if(k === "updatedAt") continue;
+      if(typeof raw.report[k] === "string") out.report[k] = raw.report[k];
+    }
+    out.report.updatedAt = Number.isFinite(raw.report.updatedAt) ? raw.report.updatedAt : 0;
+  }
 
   /* 特別の日課のパターン台帳（LONG/SHORT の勤務時間） */
   if(Array.isArray(raw.dutyPatterns)){
@@ -1093,6 +1183,7 @@ function normalize(raw){
       .map((m,i) => ({
         id: m.id,
         name: typeof m.name === "string" ? m.name : "名称未設定",
+        rank: typeof m.rank === "string" ? m.rank : "",      /* 階級（帳票に出す） */
         order: Number.isFinite(m.order) ? m.order : i,
         deleted: !!m.deleted,
         updatedAt: Number.isFinite(m.updatedAt) ? m.updatedAt : 0,
@@ -1140,6 +1231,10 @@ function mergeState(local, remote){
     events:    mergeLists(local.events || [],    remote.events || []),
     dutyPatterns: mergeLists(local.dutyPatterns || [], remote.dutyPatterns || []),
     duties:       mergeLists(local.duties || [],       remote.duties || []),
+    /* 帳票の設定は1組しかないので、更新の新しい方を採る */
+    report: ((local.report && local.report.updatedAt) || 0) >= ((remote.report && remote.report.updatedAt) || 0)
+      ? { ...REPORT_DEFAULT, ...(local.report || {}) }
+      : { ...REPORT_DEFAULT, ...(remote.report || {}) },
   };
 }
 /** 古い tombstone を掃除（ファイルの肥大化防止） */
@@ -1171,6 +1266,7 @@ const liveDutyPatterns = () =>
   (state.dutyPatterns || []).filter(p => !p.deleted)
     .sort((a,b) => a.order - b.order || a.code.localeCompare(b.code,"ja"));
 const liveDuties = () => (state.duties || []).filter(d => !d.deleted);
+const reportInfo = () => ({ ...REPORT_DEFAULT, ...(state.report || {}) });
 const patternById = id => (state.dutyPatterns || []).find(p => p.id === id && !p.deleted);
 const dutyOf = (memberId, date) =>
   liveDuties().find(d => d.memberId === memberId && d.date === date);
@@ -2088,12 +2184,67 @@ function applyBulk(remove){
   changed();
 }
 
-/* --- 月次報告 --- */
+/* --- 月次報告（特別の日課指定・勤務計画表） --- */
 function renderReport(){
   const a = parseDate(ui.dutyMonth + "-01") || startOfDay(new Date());
   const year = a.getFullYear(), month = a.getMonth() + 1;
   $("rMonth").textContent = `${year}年${month}月`;
 
+  const r = reportInfo();
+  const days = [];
+  for(let d = 1; d <= new Date(year, month, 0).getDate(); d++) days.push(new Date(year, month-1, d));
+  const members = liveMembers();
+
+  /* 右上の管理事項 */
+  const head = `<div class="fm-head">
+      <div class="fm-unit">${esc(r.headerUnit)}</div>
+      <table class="fm-meta"><tbody>
+        <tr><td>文書管理者：</td><td>${esc(r.docManager)}</td>
+            <td>作成年月日：</td><td>${esc(toDateStr(startOfDay(new Date())).replace(/-/g,"."))}</td></tr>
+        <tr><td>保存期間：</td><td>${esc(r.keepYears)}</td>
+            <td>保存期限満了日：</td><td>${esc(r.keepUntil)}</td></tr>
+        <tr><td>枚数：</td><td>${esc(r.sheets)}</td>
+            <td>配布先：</td><td>${esc(r.distribution)}</td></tr>
+      </tbody></table>
+    </div>`;
+
+  /* 欄外の記載要領 */
+  const legend = r.legend
+    ? `<div class="fm-legend">${esc(r.legend).replace(/\n/g,"<br>")}</div>` : "";
+
+  /* 表題 */
+  const title = `<div class="fm-title">
+      ${esc(r.title)}（令和${reiwa(year)}年${month}月）<br>
+      <span class="fm-sub">部隊名（${esc(r.unitName)}　）</span>
+    </div>`;
+
+  /* 本体：縦=階級・氏名、横=日にち */
+  let body = `<table class="fmtable"><thead>
+    <tr><th class="rk">階級</th><th class="nm">氏名</th>`
+    + days.map(d => `<th class="${d.getDay()===0?"sun":d.getDay()===6?"sat":""}">${d.getDate()}</th>`).join("")
+    + `</tr><tr><th class="rk"></th><th class="nm">曜</th>`
+    + days.map(d => `<th class="${d.getDay()===0?"sun":d.getDay()===6?"sat":""}">${WD[d.getDay()]}</th>`).join("")
+    + `</tr></thead><tbody>`;
+
+  for(const m of members){
+    body += `<tr><td class="rk">${esc(m.rank)}</td><td class="nm">${esc(m.name)}</td>`;
+    for(const d of days){
+      const duty = dutyOf(m.id, toDateStr(d));
+      const p = duty && patternById(duty.patternId);
+      body += `<td class="${d.getDay()===0?"sun":d.getDay()===6?"sat":""}">`
+        + (p ? esc(p.code) : "") + `</td>`;
+    }
+    body += `</tr>`;
+  }
+  body += `</tbody></table>`;
+
+  $("reportBody").innerHTML =
+    `<div class="formsheet">${head}${legend}${title}${body}</div>`
+    + `<div class="summary-sheet">` + summaryHtml(year, month) + `</div>`;
+}
+
+/** 参考として付ける集計（繰越・付与・取得・失効） */
+function summaryHtml(year, month){
   const members = liveMembers();
   const rows = members.map(m => ({ m, s:dutyMonthly(m.id, year, month) }));
   const sum = rows.reduce((a,r) => ({
@@ -2101,7 +2252,7 @@ function renderReport(){
     expired:a.expired + r.s.expired, closing:a.closing + r.s.closing,
   }), { opening:0, earn:0, use:0, expired:0, closing:0 });
 
-  let html = `<p class="rtitle">特別の日課 取得状況報告　${year}年${month}月</p>`
+  let html = `<p class="rtitle">（参考）特別の日課 取得状況　${year}年${month}月</p>`
     + `<p class="rsub">基準勤務時間 ${fmtMin(BASE_MIN)}／取得期限 発生から8週間`
     + `　作成日 ${toDateStr(startOfDay(new Date()))}</p>`
     + `<table class="rtable"><thead><tr>`
@@ -2112,7 +2263,7 @@ function renderReport(){
     const days = liveDuties().filter(d => d.memberId === r.m.id && d.date.startsWith(`${year}-${pad(month)}`));
     const nLong  = days.filter(d => { const p = patternById(d.patternId); return p && patternDelta(p) > 0; }).length;
     const nShort = days.filter(d => { const p = patternById(d.patternId); return p && patternDelta(p) < 0; }).length;
-    html += `<tr><td class="nm">${esc(r.m.name)}</td>`
+    html += `<tr><td class="nm">${esc(r.m.rank)} ${esc(r.m.name)}</td>`
       + `<td>${fmtMin(r.s.opening)}</td>`
       + `<td>${r.s.earn ? fmtMin(r.s.earn) : "－"}</td>`
       + `<td>${r.s.use ? fmtMin(r.s.use) : "－"}</td>`
@@ -2150,30 +2301,69 @@ function renderReport(){
   }
   if(!any) html += `<p class="rsub">この月の割当はありません。</p>`;
   html += `</div>`;
-  $("reportBody").innerHTML = html;
+  return html;
+}
+
+/* --- 帳票の設定 --- */
+const FM_FIELDS = {
+  fmTitle:"title", fmUnit:"unitName", fmHeaderUnit:"headerUnit", fmDoc:"docManager",
+  fmKeep:"keepYears", fmUntil:"keepUntil", fmSheets:"sheets", fmDist:"distribution",
+  fmLegend:"legend",
+};
+function openReportSettings(){
+  const r = reportInfo();
+  for(const [id, key] of Object.entries(FM_FIELDS)) $(id).value = r[key] || "";
+  $("fmMask").hidden = false;
+  $("fmUnit").focus();
+}
+function saveReportSettings(){
+  const r = reportInfo();
+  for(const [id, key] of Object.entries(FM_FIELDS)) r[key] = $(id).value.trim();
+  if(!r.title) r.title = REPORT_DEFAULT.title;
+  r.updatedAt = Date.now();
+  state.report = r;
+  $("fmMask").hidden = true;
+  changed();
 }
 
 function reportCsv(){
   const a = parseDate(ui.dutyMonth + "-01") || startOfDay(new Date());
   const year = a.getFullYear(), month = a.getMonth() + 1;
   const q = v => `"${String(v).replace(/"/g,'""')}"`;
+  const r = reportInfo();
+  const days = [];
+  for(let d = 1; d <= new Date(year, month, 0).getDate(); d++) days.push(new Date(year, month-1, d));
+
   const lines = [
-    [`特別の日課 取得状況報告 ${year}年${month}月`],
-    [`基準勤務時間`, fmtMin(BASE_MIN), `取得期限`, `8週間`],
+    [`${r.title}（令和${reiwa(year)}年${month}月）`],
+    [`部隊名`, r.unitName],
     [],
-    ["氏名","前月繰越","当月付与","当月取得","失効","翌月繰越","LONG日数","SHORT日数"],
+    /* 帳票と同じ並び（縦=人、横=日にち） */
+    ["階級","氏名", ...days.map(d => d.getDate())],
+    ["","曜", ...days.map(d => WD[d.getDay()])],
   ];
+  for(const m of liveMembers()){
+    lines.push([m.rank || "", m.name, ...days.map(d => {
+      const duty = dutyOf(m.id, toDateStr(d));
+      const p = duty && patternById(duty.patternId);
+      return p ? p.code : "";
+    })]);
+  }
+  lines.push([]);
+  lines.push([`（参考）取得状況`]);
+  lines.push([`基準勤務時間`, fmtMin(BASE_MIN), `取得期限`, `8週間`]);
+  lines.push(["階級","氏名","前月繰越","当月付与","当月取得","失効","翌月繰越","LONG日数","SHORT日数"]);
   for(const m of liveMembers()){
     const s = dutyMonthly(m.id, year, month);
     const days = liveDuties().filter(d => d.memberId === m.id && d.date.startsWith(`${year}-${pad(month)}`));
     const nLong  = days.filter(d => { const p = patternById(d.patternId); return p && patternDelta(p) > 0; }).length;
     const nShort = days.filter(d => { const p = patternById(d.patternId); return p && patternDelta(p) < 0; }).length;
-    lines.push([m.name, fmtMin(s.opening), fmtMin(s.earn), fmtMin(s.use),
+    lines.push([m.rank || "", m.name, fmtMin(s.opening), fmtMin(s.earn), fmtMin(s.use),
                 fmtMin(s.expired), fmtMin(s.closing), nLong, nShort]);
   }
   lines.push([]);
   lines.push(["取得明細"]);
-  lines.push(["氏名","日付","曜日","コード","名称","開始","終了","休憩(分)","実働","増減"]);
+  lines.push(["階級","氏名","日付","曜日","コード","名称","開始","終了","休憩(分)","実働","増減"]);
   for(const m of liveMembers()){
     const days = liveDuties()
       .filter(d => d.memberId === m.id && d.date.startsWith(`${year}-${pad(month)}`))
@@ -2182,7 +2372,7 @@ function reportCsv(){
       const p = patternById(d.patternId);
       if(!p) continue;
       const dt = parseDate(d.date);
-      lines.push([m.name, d.date, WD[dt.getDay()], p.code, p.name, p.start, p.end,
+      lines.push([m.rank || "", m.name, d.date, WD[dt.getDay()], p.code, p.name, p.start, p.end,
                   p.breakMin, fmtMin(patternWorkMin(p)), fmtMin(patternDelta(p), true)]);
     }
   }
@@ -2191,7 +2381,7 @@ function reportCsv(){
   const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
   const el = document.createElement("a");
   el.href = URL.createObjectURL(blob);
-  el.download = `特別の日課_${year}${pad(month)}.csv`;
+  el.download = `特別の日課指定・勤務計画表_令和${reiwa(year)}年${month}月.csv`;
   el.click();
   setTimeout(() => URL.revokeObjectURL(el.href), 1000);
 }
@@ -2915,6 +3105,16 @@ function renderMembers(){
   list.forEach((m, i) => {
     const li = document.createElement("li");
 
+    /* 階級（帳票に印字する。空欄でもよい） */
+    const rank = document.createElement("input");
+    rank.value = m.rank || "";
+    rank.placeholder = "階級";
+    rank.className = "rankinput";
+    rank.addEventListener("change", () => {
+      m.rank = rank.value.trim(); m.updatedAt = Date.now();
+      changed();
+    });
+
     const input = document.createElement("input");
     input.value = m.name;
     input.addEventListener("change", () => {
@@ -2940,7 +3140,7 @@ function renderMembers(){
       renderMembers(); changed();
     });
 
-    li.append(input, ord, del);
+    li.append(rank, input, ord, del);
     ul.appendChild(li);
   });
 }
@@ -3463,8 +3663,14 @@ const HELP_HTML = `
 <p><strong>月次報告</strong></p>
 <ul>
   <li>特日課の画面から「<strong>月次報告</strong>」を押すと、そのまま提出できる一覧表を作ります。</li>
-  <li>メンバーごとに <strong>前月繰越／当月付与／当月取得／失効／翌月繰越／LONG日数／SHORT日数</strong>を並べ、
-      合計行と<strong>取得明細</strong>（誰がいつどのパターンか）を付けます。</li>
+  <li>様式は<strong>「特別の日課指定・勤務計画表」</strong>です。
+      <strong>縦が階級・氏名、横が1〜31日</strong>で、各マスにパターンのコード（記号）を印字します。
+      土日は赤字になります。</li>
+  <li>表題の<strong>令和◯年◯月は、表示中の月から自動</strong>で入ります。
+      部隊名・文書管理者・保存期間・配布先などは「<strong>帳票の設定</strong>」で登録でき、全員に同期されます。</li>
+  <li>階級は「メンバー」画面の氏名の左の欄に入れてください。</li>
+  <li>参考として、後ろに <strong>前月繰越／当月付与／当月取得／失効／翌月繰越／LONG日数／SHORT日数</strong> の
+      集計と取得明細も付けています。</li>
   <li><strong>CSVで書き出す</strong>（Excelでそのまま開けます）と<strong>印刷する</strong>に対応しています。</li>
 </ul>
 
@@ -3666,6 +3872,9 @@ function init(){
   $("reportBtn").addEventListener("click", () => goto("report"));
   $("rBack").addEventListener("click", () => goto("duty"));
   $("rCsv").addEventListener("click", reportCsv);
+  $("fmBtn").addEventListener("click", openReportSettings);
+  $("fmCancel").addEventListener("click", () => { $("fmMask").hidden = true; });
+  $("fmSave").addEventListener("click", saveReportSettings);
   $("rPrint").addEventListener("click", () => window.print());
 
   $("dutyCancel").addEventListener("click", () => { $("dutyMask").hidden = true; editingDuty = null; });
@@ -3731,7 +3940,7 @@ function init(){
   document.addEventListener("keydown", e => {
     if(e.key !== "Escape") return;
     ["taskMask","memberMask","helpMask","setMask","certMask","eventMask",
-     "dutyMask","patMask","bulkMask"].forEach(id => { $(id).hidden = true; });
+     "dutyMask","patMask","bulkMask","fmMask"].forEach(id => { $(id).hidden = true; });
     editingCert = null; editingEvent = null; editingDuty = null;
     editingId = null;
   });
